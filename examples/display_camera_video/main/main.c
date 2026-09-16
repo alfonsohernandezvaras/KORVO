@@ -57,8 +57,8 @@ static void cold_boot_restart_once(void)
 
     if (reason == ESP_RST_POWERON && cold_boot_restart_magic != COLD_BOOT_RESTART_MAGIC) {
         cold_boot_restart_magic = COLD_BOOT_RESTART_MAGIC;
-        ESP_LOGW(TAG, "Cold power-on detected: automatic restart in 1000 ms");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGW(TAG, "Cold power-on detected: automatic RESET in 2000 ms");
+        vTaskDelay(pdMS_TO_TICKS(2000));
         esp_restart();
     }
 
