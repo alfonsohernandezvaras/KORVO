@@ -114,6 +114,9 @@ static uint32_t motion_frame_counter = 0;
 #define CAMERA_RUNTIME_WATCHDOG_TIMEOUT_MS 10000
 #define CAMERA_RUNTIME_WATCHDOG_POLL_MS     1000
 
+/* Independent SD watchdog: read-only probe every 5 seconds. */
+#define STORAGE_WATCHDOG_POLL_MS             5000
+
 static volatile bool korvo_services_enabled = false;
 static volatile uint32_t camera_health_valid_samples = 0;
 static volatile TickType_t camera_last_valid_frame_tick = 0;
@@ -607,6 +610,51 @@ static void camera_runtime_watchdog_task(void *arg)
     }
 }
 
+
+
+static void storage_watchdog_task(void *arg)
+{
+    bool last_ok = false;
+    bool first_sample = true;
+
+    ESP_LOGI(TAG, "SD WATCHDOG started: poll=%d ms",
+             STORAGE_WATCHDOG_POLL_MS);
+
+    while (1) {
+        korvo_storage_status_t status = {0};
+        esp_err_t err = korvo_storage_get_status(&status);
+        bool ok = (err == ESP_OK && status.ok);
+
+        korvo_hmi_update_storage(status.sd_ok,
+                                 status.fs_ok,
+                                 status.structure_ok,
+                                 status.used_bytes,
+                                 status.free_bytes);
+
+        if (first_sample || ok != last_ok) {
+            if (ok) {
+                ESP_LOGI(TAG,
+                         "SD WATCHDOG: OK used=%llu MB free=%llu MB",
+                         (unsigned long long)(status.used_bytes / (1024ULL * 1024ULL)),
+                         (unsigned long long)(status.free_bytes / (1024ULL * 1024ULL)));
+            } else {
+                ESP_LOGE(TAG,
+                         "SD WATCHDOG: ERROR (%s) - KORVO continues running",
+                         esp_err_to_name(err));
+            }
+            last_ok = ok;
+            first_sample = false;
+        }
+
+        /*
+         * SD failure must never create a reboot loop. The watchdog keeps
+         * checking and the HMI remains operational so the fault is visible.
+         */
+        vTaskDelay(pdMS_TO_TICKS(STORAGE_WATCHDOG_POLL_MS));
+    }
+}
+
+
 void app_main(void)
 {
     esp_err_t ret = ESP_OK;
@@ -726,8 +774,25 @@ void app_main(void)
     lv_obj_center(camera_canvas);
 /* ===== KORVO ACCESS HMI ===== */
     korvo_hmi_init();
+
     bsp_display_unlock();
 
+    /*
+     * SD runtime watchdog starts after HMI creation so its first sample can
+     * immediately populate the upper-right SD card.
+     */
+    BaseType_t storage_wd_ret = xTaskCreate(
+        storage_watchdog_task,
+        "sd_watchdog",
+        4096,
+        NULL,
+        3,
+        NULL
+    );
+    if (storage_wd_ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create SD watchdog task");
+        korvo_hmi_update_storage(false, false, false, 0, 0);
+    }
 
     /* Initialize video capture device */
     ret = app_video_set_bufs(fd, NUM_BUFS, NULL);

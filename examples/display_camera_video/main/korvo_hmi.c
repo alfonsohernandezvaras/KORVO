@@ -12,6 +12,7 @@ static lv_obj_t *s_message = NULL;
 static lv_obj_t *s_face_box = NULL;
 static lv_obj_t *s_face_center = NULL;
 static lv_obj_t *s_motion_diag = NULL;
+static lv_obj_t *s_storage_diag = NULL;
 static lv_obj_t *s_screensaver = NULL;
 static bool s_awake = false;
 static korvo_hmi_face_state_t s_face_state = KORVO_HMI_FACE_NONE;
@@ -167,6 +168,21 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_opa(s_motion_diag, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(s_motion_diag, 5, 0);
     lv_obj_align(s_motion_diag, LV_ALIGN_TOP_LEFT, 6, 6);
+
+    /* Compact SD status card, symmetric with the motion diagnostic. */
+    s_storage_diag = lv_label_create(screen);
+    lv_label_set_text(s_storage_diag,
+                      "SD CARD: --\n"
+                      "FS: --\n"
+                      "ESTRUCTURA: --\n"
+                      "USO: --\n"
+                      "LIBRE: --");
+    lv_obj_set_style_text_color(s_storage_diag, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_storage_diag, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_bg_color(s_storage_diag, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_storage_diag, LV_OPA_70, 0);
+    lv_obj_set_style_pad_all(s_storage_diag, 5, 0);
+    lv_obj_align(s_storage_diag, LV_ALIGN_TOP_RIGHT, -6, 6);
 
     /*
      * Full-screen software screensaver.
@@ -336,6 +352,9 @@ void korvo_hmi_track_face(const face_detection_t *face,
     if (s_motion_diag != NULL) {
         lv_obj_move_foreground(s_motion_diag);
     }
+    if (s_storage_diag != NULL) {
+        lv_obj_move_foreground(s_storage_diag);
+    }
 
     bsp_display_unlock();
 }
@@ -484,6 +503,53 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
     lv_obj_move_foreground(s_motion_diag);
     bsp_display_unlock();
 
+}
+
+
+void korvo_hmi_update_storage(bool sd_ok,
+                              bool fs_ok,
+                              bool structure_ok,
+                              uint64_t used_bytes,
+                              uint64_t free_bytes)
+{
+    if (s_storage_diag == NULL) {
+        return;
+    }
+
+    char text[192];
+
+    if (sd_ok && fs_ok) {
+        const double gib = 1024.0 * 1024.0 * 1024.0;
+
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "ESTRUCTURA: %s\n"
+                 "USO: %.1f GB\n"
+                 "LIBRE: %.1f GB",
+                 structure_ok ? "OK" : "ERROR",
+                 (double)used_bytes / gib,
+                 (double)free_bytes / gib);
+    } else if (sd_ok) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: ERROR\n"
+                 "ESTRUCTURA: --\n"
+                 "USO: --\n"
+                 "LIBRE: --");
+    } else {
+        snprintf(text, sizeof(text),
+                 "SD CARD: ERROR\n"
+                 "FS: --\n"
+                 "ESTRUCTURA: --\n"
+                 "USO: --\n"
+                 "LIBRE: --");
+    }
+
+    bsp_display_lock(0);
+    lv_label_set_text(s_storage_diag, text);
+    lv_obj_move_foreground(s_storage_diag);
+    bsp_display_unlock();
 }
 
 korvo_hmi_face_state_t korvo_hmi_face_state(void)

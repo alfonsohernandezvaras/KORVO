@@ -41,6 +41,13 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
                              uint32_t idle_ms,
                              uint32_t sleep_ms);
 
+/* Compact SD status card shown at the upper-right corner. */
+void korvo_hmi_update_storage(bool sd_ok,
+                              bool fs_ok,
+                              bool structure_ok,
+                              uint64_t used_bytes,
+                              uint64_t free_bytes);
+
 korvo_hmi_face_state_t korvo_hmi_face_state(void);
 
 #ifdef __cplusplus
