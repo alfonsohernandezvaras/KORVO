@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "sdkconfig.h"
 #include "bsp/esp-bsp.h"
 #include "esp_err.h"
@@ -29,6 +30,8 @@
 #include "esp_private/esp_cache_private.h"
 #include "app_video.h"
 #include "face_detect.h"
+#include "korvo_hmi.h"
+#include "korvo_storage.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -43,30 +46,6 @@ typedef struct {
 
 static const char *TAG = "example";
 
-/*
- * One-shot software restart after a real power-on.
- * RTC_NOINIT_ATTR survives esp_restart(), so the second boot continues
- * normally instead of entering a restart loop.
- */
-#define COLD_BOOT_RESTART_MAGIC 0x4B4F5256U
-RTC_NOINIT_ATTR static uint32_t cold_boot_restart_magic;
-
-static void cold_boot_restart_once(void)
-{
-    esp_reset_reason_t reason = esp_reset_reason();
-
-    if (reason == ESP_RST_POWERON && cold_boot_restart_magic != COLD_BOOT_RESTART_MAGIC) {
-        cold_boot_restart_magic = COLD_BOOT_RESTART_MAGIC;
-        ESP_LOGW(TAG, "Cold power-on detected: automatic RESET in 2000 ms");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        esp_restart();
-    }
-
-    /* Arm the next genuine power cycle. */
-    if (reason != ESP_RST_SW) {
-        cold_boot_restart_magic = 0;
-    }
-}
 #if SOC_PPA_SUPPORTED
 static ppa_client_handle_t ppa_srm_handle = NULL;
 #endif
@@ -89,6 +68,53 @@ static volatile bool face_ai_pending = false;
 static uint32_t face_frame_counter = 0;
 static uint16_t face_ai_width = 0;
 static uint16_t face_ai_height = 0;
+
+/* ===== KORVO PRESENCE / WAKE STATE ===== */
+#define FACE_LOST_SLEEP_MS              10000
+
+/*
+ * LCD activity timer:
+ * - starts once when a candidate wakes the screen
+ * - is refreshed ONLY by a face that passes the HMI geometry matrix
+ *
+ * Repeated ESP-DL false positives therefore cannot keep the LCD on forever.
+ */
+static TickType_t last_face_tick = 0;
+static bool korvo_awake = false;
+
+/* ===== CAMERA MOTION DIAGNOSTIC =====
+ * Lightweight sampled RGB565 frame difference. This is independent from
+ * ESP-DL face detection and runs directly in the existing frame callback.
+ */
+#define MOTION_SAMPLE_STEP_PIXELS   16
+#define MOTION_PIXEL_DELTA          18
+#define MOTION_ACTIVE_PERCENT_X10   180  /* 18.0% candidate */
+#define MOTION_STRONG_PERCENT_X10   300  /* 30.0% = immediate real motion */
+#define MOTION_WAKE_PERCENT_X10     180  /* candidate threshold */
+#define MOTION_IDLE_SLEEP_MS        10000
+#define MOTION_CONFIRM_SAMPLES      3    /* 18-30% must persist */
+#define MOTION_CLEAR_SAMPLES        6    /* <18% must persist before inactive */
+
+static volatile uint32_t motion_percent_x10 = 0;
+static volatile bool motion_active = false;
+static volatile TickType_t last_motion_tick = 0;
+static uint16_t *motion_reference = NULL;
+static size_t motion_reference_count = 0;
+static uint32_t motion_frame_counter = 0;
+
+/*
+ * Boot sequencing:
+ * First bring up display + camera + video and leave the camera visible.
+ * Auxiliary services (motion/screensaver + ESP-DL face AI) are enabled
+ * only 10 seconds after KORVO READY.
+ */
+#define KORVO_SERVICES_START_DELAY_MS 10000
+#define CAMERA_HEALTH_TIMEOUT_MS       8000
+#define CAMERA_HEALTH_VALID_SAMPLES    3
+static volatile bool korvo_services_enabled = false;
+static volatile uint32_t camera_health_valid_samples = 0;
+static uint8_t motion_confirm_count = 0;
+static uint8_t motion_clear_count = 0;
 
 static lv_color_format_t lvgl_rgb565_fmt_from_v4l2(uint32_t pixelformat)
 {
@@ -174,6 +200,186 @@ static void calc_aspect_fit(
 }
 #endif
 
+static void motion_process_rgb565(const uint8_t *camera_buf,
+                                  uint32_t width,
+                                  uint32_t height,
+                                  size_t camera_buf_len)
+{
+    /* Camera health runs during boot, but HMI/screensaver effects do not. */
+    if (camera_buf == NULL || width == 0 || height == 0) {
+        return;
+    }
+
+    size_t pixels = (size_t)width * height;
+    if (camera_buf_len < pixels * 2U) {
+        return;
+    }
+
+    const uint16_t *src = (const uint16_t *)camera_buf;
+
+    size_t samples_x = (width + MOTION_SAMPLE_STEP_PIXELS - 1) /
+                       MOTION_SAMPLE_STEP_PIXELS;
+    size_t samples_y = (height + MOTION_SAMPLE_STEP_PIXELS - 1) /
+                       MOTION_SAMPLE_STEP_PIXELS;
+    size_t needed = samples_x * samples_y;
+
+    if (motion_reference == NULL || motion_reference_count != needed) {
+        free(motion_reference);
+        motion_reference = heap_caps_malloc(needed * sizeof(uint16_t),
+                                            MALLOC_CAP_SPIRAM);
+        if (motion_reference == NULL) {
+            motion_reference_count = 0;
+            return;
+        }
+        motion_reference_count = needed;
+
+        size_t k = 0;
+        for (uint32_t y = 0; y < height; y += MOTION_SAMPLE_STEP_PIXELS) {
+            for (uint32_t x = 0; x < width; x += MOTION_SAMPLE_STEP_PIXELS) {
+                motion_reference[k++] = src[(size_t)y * width + x];
+            }
+        }
+        last_motion_tick = xTaskGetTickCount();
+        return;
+    }
+
+    size_t changed = 0;
+    size_t total = 0;
+    size_t k = 0;
+
+    for (uint32_t y = 0; y < height; y += MOTION_SAMPLE_STEP_PIXELS) {
+        for (uint32_t x = 0; x < width; x += MOTION_SAMPLE_STEP_PIXELS) {
+            uint16_t now = src[(size_t)y * width + x];
+            uint16_t prev = motion_reference[k];
+
+            int nr = (now >> 11) & 0x1F;
+            int ng = (now >> 5) & 0x3F;
+            int nb = now & 0x1F;
+            int pr = (prev >> 11) & 0x1F;
+            int pg = (prev >> 5) & 0x3F;
+            int pb = prev & 0x1F;
+
+            int delta = abs(nr - pr) * 2 +
+                        abs(ng - pg) +
+                        abs(nb - pb) * 2;
+
+            if (delta >= MOTION_PIXEL_DELTA) {
+                changed++;
+            }
+
+            /* Slowly follow the scene by using the current sampled frame
+             * as the next reference. */
+            motion_reference[k] = now;
+            k++;
+            total++;
+        }
+    }
+
+    if (total == 0) {
+        return;
+    }
+
+    motion_percent_x10 = (uint32_t)((changed * 1000U) / total);
+
+    /* A computed percentage, including 0.0%, proves real RGB565 processing. */
+    if (camera_health_valid_samples < CAMERA_HEALTH_VALID_SAMPLES) {
+        camera_health_valid_samples++;
+    }
+
+    /* During boot calculate health only; no motion/HMI/screensaver effects. */
+    if (!korvo_services_enabled) {
+        return;
+    }
+
+    /*
+     * Stage 5.2 motion filter:
+     *   >=30% : strong movement, accept immediately.
+     *   18-30%: candidate movement, require consecutive samples.
+     *   <18%  : require consecutive quiet samples before clearing motion.
+     *
+     * This prevents isolated LCD/light flicker spikes from continuously
+     * resetting the inactivity timer.
+     */
+    bool motion_event = false;
+
+    if (motion_percent_x10 >= MOTION_STRONG_PERCENT_X10) {
+        motion_confirm_count = MOTION_CONFIRM_SAMPLES;
+        motion_clear_count = 0;
+        motion_active = true;
+        motion_event = true;
+    } else if (motion_percent_x10 >= MOTION_ACTIVE_PERCENT_X10) {
+        motion_clear_count = 0;
+        if (motion_confirm_count < MOTION_CONFIRM_SAMPLES) {
+            motion_confirm_count++;
+        }
+        if (motion_confirm_count >= MOTION_CONFIRM_SAMPLES) {
+            motion_active = true;
+            motion_event = true;
+        }
+    } else {
+        motion_confirm_count = 0;
+        if (motion_clear_count < MOTION_CLEAR_SAMPLES) {
+            motion_clear_count++;
+        }
+        if (motion_clear_count >= MOTION_CLEAR_SAMPLES) {
+            motion_active = false;
+        }
+    }
+
+    TickType_t now_tick = xTaskGetTickCount();
+    if (motion_event) {
+        last_motion_tick = now_tick;
+    }
+
+    /*
+     * Strong scene motion can wake the LCD even before ESP-DL finds a face.
+     * It does NOT imply a face or authorization.
+     */
+    /*
+     * Wake the visual HMI ONLY on strong real motion (>=30%).
+     * The 18-30% band remains filtered for diagnostics/activity, but it cannot
+     * remove the black screensaver.
+     */
+    if (!korvo_awake && motion_percent_x10 >= MOTION_STRONG_PERCENT_X10) {
+        korvo_awake = true;
+        last_face_tick = now_tick;
+        korvo_hmi_wake();
+    }
+
+    /*
+     * Temporary diagnostic overlay requested for calibration.
+     */
+    uint32_t idle_ms = 0;
+    if (last_motion_tick != 0) {
+        idle_ms = (uint32_t)((now_tick - last_motion_tick) * portTICK_PERIOD_MS);
+    }
+    if (idle_ms > MOTION_IDLE_SLEEP_MS) {
+        idle_ms = MOTION_IDLE_SLEEP_MS;
+    }
+
+    korvo_hmi_update_motion(motion_percent_x10,
+                            motion_active,
+                            idle_ms,
+                            MOTION_IDLE_SLEEP_MS);
+
+    /*
+     * Actual display sleep is based on real camera inactivity.
+     * ESP-DL false positives no longer prevent standby.
+     */
+    /*
+     * IMPORTANT:
+     * Do not gate standby with korvo_awake. The diagnostic countdown is
+     * authoritative: once real camera inactivity reaches 10 s, force the
+     * software screensaver ON. This also self-corrects any HMI/awake state mismatch.
+     */
+    if (last_motion_tick != 0 &&
+        (now_tick - last_motion_tick) >= pdMS_TO_TICKS(MOTION_IDLE_SLEEP_MS)) {
+        korvo_awake = false;
+        korvo_hmi_no_face();
+        korvo_hmi_sleep();
+    }
+}
+
 static void face_detection_task(void *arg)
 {
     ESP_LOGI(TAG, "Starting ESP-DL face detector");
@@ -188,6 +394,17 @@ static void face_detection_task(void *arg)
 
     while (1) {
         if (!face_ai_pending) {
+            /*
+             * The sleep timeout must run independently from ESP-DL results.
+             * This prevents a stale READY message from remaining forever.
+             */
+            if (korvo_awake &&
+                last_face_tick != 0 &&
+                (xTaskGetTickCount() - last_face_tick) >= pdMS_TO_TICKS(FACE_LOST_SLEEP_MS)) {
+                /* LCD standby is owned by motion_process_rgb565(). */
+                korvo_hmi_no_face();
+            }
+
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
@@ -208,10 +425,60 @@ static void face_detection_task(void *arg)
             }
         }
 
+        TickType_t now = xTaskGetTickCount();
+
         if (result.detected) {
             ESP_LOGI(TAG, "FACE score=%.3f box=[%d,%d,%d,%d]",
                      result.score, result.x1, result.y1,
                      result.x2, result.y2);
+
+            /*
+             * Any ESP-DL candidate may wake the LCD, but it starts the
+             * 10-second activity window only once. Repeated false positives
+             * must NOT refresh this timer.
+             */
+            /*
+             * LCD wake/sleep is controlled exclusively by the real motion
+             * detector. ESP-DL may classify/track a face, but a false-positive
+             * face must never wake the LCD again after motion timeout.
+             */
+            korvo_hmi_track_face(&result, face_ai_width, face_ai_height);
+            korvo_hmi_update_face(&result, face_ai_width, face_ai_height);
+
+            /*
+             * Refresh LCD activity only after the candidate passes the
+             * geometric face matrix. POSITION means ESP-DL saw something,
+             * but it is not yet a usable/credible face for this purpose.
+             */
+            korvo_hmi_face_state_t face_state = korvo_hmi_face_state();
+            if (face_state == KORVO_HMI_FACE_HOLD_STILL ||
+                face_state == KORVO_HMI_FACE_READY) {
+                last_face_tick = now;
+            }
+
+            /*
+             * Check timeout here too. This is essential when ESP-DL keeps
+             * returning detected=true for a ceiling/object false positive.
+             */
+            if (korvo_awake &&
+                last_face_tick != 0 &&
+                (now - last_face_tick) >= pdMS_TO_TICKS(FACE_LOST_SLEEP_MS)) {
+                /* LCD standby is owned by motion_process_rgb565(). */
+                korvo_hmi_no_face();
+            }
+        } else {
+            /*
+             * Immediately clear READY/stability when the face disappears.
+             * Keep the LCD awake for FACE_LOST_SLEEP_MS so the user can
+             * reposition without the screen flashing off.
+             */
+            korvo_hmi_no_face();
+
+            if (korvo_awake &&
+                last_face_tick != 0 &&
+                (now - last_face_tick) >= pdMS_TO_TICKS(FACE_LOST_SLEEP_MS)) {
+                /* LCD standby is owned by motion_process_rgb565(). */
+            }
         }
     }
 }
@@ -222,6 +489,18 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     uint32_t out_w = camera_buf_hes;
     uint32_t out_h = camera_buf_ves ;
     uint8_t *out_buf = camera_buf;
+
+    /*
+     * Lightweight motion sampling runs independently from ESP-DL.
+     * Use every 3rd video frame to keep callback cost low.
+     */
+    motion_frame_counter++;
+    if ((motion_frame_counter % 3U) == 0U) {
+        motion_process_rgb565(camera_buf,
+                              camera_buf_hes,
+                              camera_buf_ves,
+                              camera_buf_len);
+    }
 
     /*
      * Copy a periodic camera frame into a dedicated PSRAM buffer.
@@ -292,11 +571,12 @@ void app_main(void)
 {
     esp_err_t ret = ESP_OK;
 
-    /* Reproduce the known-good physical RESET automatically after power-on. */
-    cold_boot_restart_once();
+    /* Diagnostic boot reason. No automatic cold-boot restart. */
+    esp_reset_reason_t boot_reason = esp_reset_reason();
+    ESP_LOGI(TAG, "BOOT reset_reason=%d automatic_restart=DISABLED",
+             (int)boot_reason);
 
     bsp_display_start();
-    bsp_display_backlight_on(); // Set display brightness to 100%
 
     /*
      * ESP32-S31-Korvo-1 cold power-on stabilization.
@@ -325,6 +605,17 @@ void app_main(void)
         ESP_LOGE(TAG, "Camera initialization failed after %d attempts",
                  CAMERA_START_RETRIES);
         return;
+    }
+
+    /* Mount microSD and create/verify the standard KORVO directory tree. */
+    ESP_LOGI(TAG, "Initializing KORVO storage...");
+    esp_err_t storage_ret = korvo_storage_init();
+    if (storage_ret != ESP_OK) {
+        ESP_LOGW(TAG, "KORVO storage unavailable: %s - continuing without SD",
+                 esp_err_to_name(storage_ret));
+    } else {
+        ESP_LOGI(TAG, "KORVO storage ready at %s (layout v%s)",
+                 korvo_storage_root(), korvo_storage_layout_version());
     }
 
 #if SOC_PPA_SUPPORTED
@@ -392,23 +683,9 @@ void app_main(void)
     assert(camera_canvas);
     lv_obj_center(camera_canvas);
 /* ===== KORVO ACCESS HMI ===== */
-
-lv_obj_t *title = lv_label_create(lv_scr_act());
-lv_label_set_text(title, "CONTROL DE ACCESO");
-lv_obj_set_style_text_color(title, lv_color_white(), 0);
-lv_obj_set_style_bg_color(title, lv_color_black(), 0);
-lv_obj_set_style_bg_opa(title, LV_OPA_70, 0);
-lv_obj_set_style_pad_all(title, 8, 0);
-lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
-
-lv_obj_t *status = lv_label_create(lv_scr_act());
-lv_label_set_text(status, "SISTEMA ACTIVO");
-lv_obj_set_style_text_color(status, lv_color_white(), 0);
-lv_obj_set_style_bg_color(status, lv_color_black(), 0);
-lv_obj_set_style_bg_opa(status, LV_OPA_70, 0);
-lv_obj_set_style_pad_all(status, 6, 0);
-lv_obj_align(status, LV_ALIGN_BOTTOM_MID, 0, -8);
+    korvo_hmi_init();
     bsp_display_unlock();
+
 
     /* Initialize video capture device */
     ret = app_video_set_bufs(fd, NUM_BUFS, NULL);
@@ -427,9 +704,69 @@ lv_obj_align(status, LV_ALIGN_BOTTOM_MID, 0, -8);
     /* Start video stream task */
     ret = app_video_stream_task_start(fd, 0);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start video stream task: 0x%x", ret);
-        return;
+        ESP_LOGE(TAG, "Failed to start video stream task: 0x%x - restarting", ret);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_restart();
     }
+
+    /*
+     * CAMERA HEALTH WATCHDOG:
+     * FPS alone is not accepted. Require real RGB565 motion percentages.
+     * 0.0% is valid. Timeout means restart and another autonomous boot attempt.
+     */
+    camera_health_valid_samples = 0;
+    motion_frame_counter = 0;
+    free(motion_reference);
+    motion_reference = NULL;
+    motion_reference_count = 0;
+
+    ESP_LOGI(TAG, "CAMERA HEALTH CHECK - waiting for %d valid motion samples (%d ms timeout)",
+             CAMERA_HEALTH_VALID_SAMPLES, CAMERA_HEALTH_TIMEOUT_MS);
+
+    TickType_t camera_health_start = xTaskGetTickCount();
+    while (camera_health_valid_samples < CAMERA_HEALTH_VALID_SAMPLES) {
+        if ((xTaskGetTickCount() - camera_health_start) >=
+            pdMS_TO_TICKS(CAMERA_HEALTH_TIMEOUT_MS)) {
+            ESP_LOGE(TAG,
+                     "CAMERA HEALTH FAILED - motion %% invalid (%lu/%d) - restarting",
+                     (unsigned long)camera_health_valid_samples,
+                     CAMERA_HEALTH_VALID_SAMPLES);
+            vTaskDelay(pdMS_TO_TICKS(500));
+            esp_restart();
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    ESP_LOGI(TAG, "CAMERA HEALTH OK - motion %% valid (%lu/%d)",
+             (unsigned long)camera_health_valid_samples,
+             CAMERA_HEALTH_VALID_SAMPLES);
+
+    /*
+     * CAMERA-FIRST BOOT:
+     * At this point display + camera + video stream are already running.
+     * Keep the camera visible and do not start motion/screensaver or ESP-DL
+     * until 10 full seconds after KORVO READY.
+     */
+    korvo_awake = true;
+    korvo_hmi_wake();
+    ESP_LOGI(TAG, "KORVO READY - camera visualization only for %d ms",
+             KORVO_SERVICES_START_DELAY_MS);
+
+    vTaskDelay(pdMS_TO_TICKS(KORVO_SERVICES_START_DELAY_MS));
+
+    /*
+     * Start the inactivity clock NOW, not during boot. This guarantees a
+     * fresh 10-second inactivity window after auxiliary services start.
+     */
+    TickType_t services_start_tick = xTaskGetTickCount();
+    last_motion_tick = services_start_tick;
+    last_face_tick = services_start_tick;
+    motion_confirm_count = 0;
+    motion_clear_count = 0;
+    motion_active = false;
+    korvo_services_enabled = true;
+
+    ESP_LOGI(TAG, "KORVO auxiliary services ENABLED: motion/screensaver + ESP-DL");
 
     BaseType_t ai_task_ret = xTaskCreate(
         face_detection_task,
@@ -442,7 +779,12 @@ lv_obj_align(status, LV_ALIGN_BOTTOM_MID, 0, -8);
 
     if (ai_task_ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create face detection task");
+    } else {
+        ESP_LOGI(TAG, "ESP-DL face detection task started");
     }
 
-    ESP_LOGI(TAG, "Camera + ESP-DL face detection running.");
+    /*
+     * Do NOT force the screensaver here. Motion owns standby from now on
+     * and may activate it only after a complete inactivity interval.
+     */
 }
