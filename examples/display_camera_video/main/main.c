@@ -111,8 +111,13 @@ static uint32_t motion_frame_counter = 0;
 #define KORVO_SERVICES_START_DELAY_MS 10000
 #define CAMERA_HEALTH_TIMEOUT_MS       8000
 #define CAMERA_HEALTH_VALID_SAMPLES    3
+#define CAMERA_RUNTIME_WATCHDOG_TIMEOUT_MS 10000
+#define CAMERA_RUNTIME_WATCHDOG_POLL_MS     1000
+
 static volatile bool korvo_services_enabled = false;
 static volatile uint32_t camera_health_valid_samples = 0;
+static volatile TickType_t camera_last_valid_frame_tick = 0;
+static volatile bool camera_runtime_watchdog_enabled = false;
 static uint8_t motion_confirm_count = 0;
 static uint8_t motion_clear_count = 0;
 
@@ -281,7 +286,11 @@ static void motion_process_rgb565(const uint8_t *camera_buf,
 
     motion_percent_x10 = (uint32_t)((changed * 1000U) / total);
 
-    /* A computed percentage, including 0.0%, proves real RGB565 processing. */
+    /* A computed percentage, including 0.0%, proves real RGB565 processing.
+     * It is also the permanent camera heartbeat.
+     */
+    camera_last_valid_frame_tick = xTaskGetTickCount();
+
     if (camera_health_valid_samples < CAMERA_HEALTH_VALID_SAMPLES) {
         camera_health_valid_samples++;
     }
@@ -567,6 +576,37 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     bsp_display_unlock();
 }
 
+
+static void camera_runtime_watchdog_task(void *arg)
+{
+    ESP_LOGI(TAG, "CAMERA RUNTIME WATCHDOG started: timeout=%d ms",
+             CAMERA_RUNTIME_WATCHDOG_TIMEOUT_MS);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_RUNTIME_WATCHDOG_POLL_MS));
+
+        if (!camera_runtime_watchdog_enabled) {
+            continue;
+        }
+
+        TickType_t last = camera_last_valid_frame_tick;
+        TickType_t now = xTaskGetTickCount();
+
+        if (last == 0) {
+            continue;
+        }
+
+        uint32_t age_ms = (uint32_t)((now - last) * portTICK_PERIOD_MS);
+        if (age_ms >= CAMERA_RUNTIME_WATCHDOG_TIMEOUT_MS) {
+            ESP_LOGE(TAG,
+                     "CAMERA RUNTIME WATCHDOG TIMEOUT - no valid RGB565 processing for %lu ms - restarting",
+                     (unsigned long)age_ms);
+            vTaskDelay(pdMS_TO_TICKS(250));
+            esp_restart();
+        }
+    }
+}
+
 void app_main(void)
 {
     esp_err_t ret = ESP_OK;
@@ -602,9 +642,10 @@ void app_main(void)
     }
 
     if (camera_ret != ESP_OK) {
-        ESP_LOGE(TAG, "Camera initialization failed after %d attempts",
+        ESP_LOGE(TAG, "Camera initialization failed after %d attempts - restarting",
                  CAMERA_START_RETRIES);
-        return;
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_restart();
     }
 
     /* Mount microSD and create/verify the standard KORVO directory tree. */
@@ -670,9 +711,10 @@ void app_main(void)
     }
 
     if (fd < 0) {
-        ESP_LOGE(TAG, "Failed to open video device after %d attempts",
+        ESP_LOGE(TAG, "Failed to open video device after %d attempts - restarting",
                  VIDEO_OPEN_RETRIES);
-        return;
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_restart();
     }
     lvgl_cam_rgb565_fmt = lvgl_rgb565_fmt_from_v4l2(app_video_get_pixelformat());
 
