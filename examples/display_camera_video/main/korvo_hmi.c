@@ -509,6 +509,7 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
 void korvo_hmi_update_storage(bool sd_ok,
                               bool fs_ok,
                               bool structure_ok,
+                              int storage_state,
                               uint64_t used_bytes,
                               uint64_t free_bytes)
 {
@@ -516,11 +517,28 @@ void korvo_hmi_update_storage(bool sd_ok,
         return;
     }
 
-    char text[192];
+    char text[224];
 
-    if (sd_ok && fs_ok) {
+    /* korvo_storage_state_t: ERROR=0 READY=1 INITIALIZING=2 REPAIRING=3 FOREIGN=4 */
+    if (storage_state == 4) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "ESTRUCTURA: AJENA\n"
+                 "TARJETA NO APTA\n"
+                 "PARA INICIALIZAR");
+    } else if (storage_state == 2) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "INICIALIZANDO ESTRUCTURA...");
+    } else if (storage_state == 3) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "CORRIGIENDO ESTRUCTURA...");
+    } else if (sd_ok && fs_ok) {
         const double gib = 1024.0 * 1024.0 * 1024.0;
-
         snprintf(text, sizeof(text),
                  "SD CARD: OK\n"
                  "FS: FAT32 OK\n"

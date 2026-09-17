@@ -45,6 +45,7 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
 void korvo_hmi_update_storage(bool sd_ok,
                               bool fs_ok,
                               bool structure_ok,
+                              int storage_state,
                               uint64_t used_bytes,
                               uint64_t free_bytes);
 

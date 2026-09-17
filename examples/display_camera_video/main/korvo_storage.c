@@ -1,5 +1,6 @@
 #include "korvo_storage.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +13,7 @@
 static const char *TAG = "korvo_storage";
 static bool s_ready = false;
 static bool s_mounted = false;
+static korvo_storage_state_t s_state = KORVO_STORAGE_STATE_ERROR;
 
 #define KORVO_STORAGE_LAYOUT_VERSION "1"
 #define KORVO_STORAGE_VERSION_FILE BSP_SD_MOUNT_POINT "/korvo/system/storage.version"
@@ -57,6 +59,19 @@ BSP_SD_MOUNT_POINT "/korvo",
         BSP_SD_MOUNT_POINT "/korvo/temp"
 };
 
+/*
+ * Strong KORVO signatures. A lone /korvo directory is not enough to authorize
+ * automatic modification of a card containing unrelated user data.
+ */
+static const char *s_korvo_signature_dirs[] = {
+    BSP_SD_MOUNT_POINT "/korvo/system",
+    BSP_SD_MOUNT_POINT "/korvo/config",
+    BSP_SD_MOUNT_POINT "/korvo/identity",
+    BSP_SD_MOUNT_POINT "/korvo/access",
+    BSP_SD_MOUNT_POINT "/korvo/firmware",
+    BSP_SD_MOUNT_POINT "/korvo/sync"
+};
+
 static esp_err_t ensure_dir(const char *path)
 {
     if (mkdir(path, 0775) == 0 || errno == EEXIST) {
@@ -80,6 +95,58 @@ static esp_err_t write_layout_version(void)
     return ESP_OK;
 }
 
+static bool path_exists(const char *path)
+{
+    struct stat st = {0};
+    return stat(path, &st) == 0;
+}
+
+static bool mount_root_is_empty(void)
+{
+    DIR *dir = opendir(BSP_SD_MOUNT_POINT);
+    if (dir == NULL) {
+        return false;
+    }
+
+    bool empty = true;
+    struct dirent *entry = NULL;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0 ||
+            strcmp(entry->d_name, "System Volume Information") == 0) {
+            continue;
+        }
+
+        empty = false;
+        break;
+    }
+
+    closedir(dir);
+    return empty;
+}
+
+static unsigned korvo_signature_count(void)
+{
+    unsigned count = 0;
+
+    /* storage.version is strong evidence that this card came from KORVO. */
+    if (path_exists(KORVO_STORAGE_VERSION_FILE)) {
+        count += 3;
+    }
+
+    for (unsigned i = 0;
+         i < sizeof(s_korvo_signature_dirs) / sizeof(s_korvo_signature_dirs[0]);
+         ++i) {
+        struct stat st = {0};
+        if (stat(s_korvo_signature_dirs[i], &st) == 0 && S_ISDIR(st.st_mode)) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
 esp_err_t korvo_storage_create_layout(void)
 {
     for (unsigned i = 0; i < sizeof(s_required_dirs) / sizeof(s_required_dirs[0]); ++i) {
@@ -96,31 +163,66 @@ esp_err_t korvo_storage_init(void)
 {
     s_ready = false;
     s_mounted = false;
+    s_state = KORVO_STORAGE_STATE_ERROR;
 
     /*
-     * IMPORTANT:
-     * Mount only. Never auto-format here.
-     * A mount failure must not destroy identities, firmware or configuration.
-     * Formatting will be an explicit protected maintenance operation later.
+     * First mount normally. We deliberately do not format on an ambiguous
+     * mount failure: the card may contain NTFS/exFAT or damaged valuable data.
      */
     bsp_sdcard_cfg_t cfg = {0};
     esp_err_t err = bsp_sdcard_sdmmc_mount(&cfg);
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "SD mount failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "SD mount failed: %s - card left untouched",
+                 esp_err_to_name(err));
         return err;
     }
 
     s_mounted = true;
     ESP_LOGI(TAG, "SD mounted at %s", BSP_SD_MOUNT_POINT);
 
+    uint64_t total_bytes = 0;
+    uint64_t free_bytes = 0;
+    err = esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &total_bytes, &free_bytes);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "FAT filesystem status failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    /*
+     * Classification:
+     * - blank FAT card -> initialize complete structure
+     * - coherent partial/legacy KORVO -> add only missing paths
+     * - unrelated data -> reject untouched
+     */
+    bool empty = mount_root_is_empty();
+    unsigned signature = korvo_signature_count();
+
+    if (empty) {
+        s_state = KORVO_STORAGE_STATE_INITIALIZING;
+        ESP_LOGI(TAG, "Blank FAT SD detected - initializing KORVO structure");
+    } else if (signature >= 2) {
+        s_state = KORVO_STORAGE_STATE_REPAIRING;
+        ESP_LOGW(TAG,
+                 "Partial/legacy KORVO SD detected (signature=%u) - correcting structure",
+                 signature);
+    } else {
+        s_state = KORVO_STORAGE_STATE_FOREIGN;
+        ESP_LOGW(TAG,
+                 "Foreign/non-KORVO data detected - card is not suitable for automatic initialization");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     err = korvo_storage_create_layout();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create/verify KORVO directory layout");
+        s_state = KORVO_STORAGE_STATE_ERROR;
+        ESP_LOGE(TAG, "Failed to create/correct KORVO directory layout");
         return err;
     }
 
     s_ready = true;
+    s_state = KORVO_STORAGE_STATE_READY;
     ESP_LOGI(TAG, "KORVO SD ready: %s/korvo (layout v%s)",
              BSP_SD_MOUNT_POINT, KORVO_STORAGE_LAYOUT_VERSION);
 
@@ -178,6 +280,7 @@ esp_err_t korvo_storage_get_status(korvo_storage_status_t *status)
     }
 
     memset(status, 0, sizeof(*status));
+    status->state = s_state;
 
     if (!s_mounted) {
         s_ready = false;
@@ -210,11 +313,24 @@ esp_err_t korvo_storage_get_status(korvo_storage_status_t *status)
      * Watchdog is supervisor only:
      * verify every required directory and storage.version, but do not repair.
      */
+    if (s_state == KORVO_STORAGE_STATE_FOREIGN) {
+        status->structure_ok = false;
+        status->ok = false;
+        s_ready = false;
+        return ESP_ERR_INVALID_STATE;
+    }
+
     status->structure_ok = layout_is_valid();
     status->ok = status->sd_ok && status->fs_ok && status->structure_ok;
     s_ready = status->ok;
 
-    return status->ok ? ESP_OK : ESP_FAIL;
+    if (status->ok) {
+        s_state = KORVO_STORAGE_STATE_READY;
+        status->state = KORVO_STORAGE_STATE_READY;
+        return ESP_OK;
+    }
+
+    return ESP_FAIL;
 }
 
 bool korvo_storage_is_ready(void)
@@ -230,4 +346,9 @@ const char *korvo_storage_root(void)
 const char *korvo_storage_layout_version(void)
 {
     return KORVO_STORAGE_LAYOUT_VERSION;
+}
+
+korvo_storage_state_t korvo_storage_state(void)
+{
+    return s_state;
 }

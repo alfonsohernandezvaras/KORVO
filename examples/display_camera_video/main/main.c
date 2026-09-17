@@ -628,6 +628,7 @@ static void storage_watchdog_task(void *arg)
         korvo_hmi_update_storage(status.sd_ok,
                                  status.fs_ok,
                                  status.structure_ok,
+                                 (int)status.state,
                                  status.used_bytes,
                                  status.free_bytes);
 
@@ -791,7 +792,7 @@ void app_main(void)
     );
     if (storage_wd_ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create SD watchdog task");
-        korvo_hmi_update_storage(false, false, false, 0, 0);
+        korvo_hmi_update_storage(false, false, false, 0, 0, 0);
     }
 
     /* Initialize video capture device */
@@ -847,6 +848,27 @@ void app_main(void)
     ESP_LOGI(TAG, "CAMERA HEALTH OK - motion %% valid (%lu/%d)",
              (unsigned long)camera_health_valid_samples,
              CAMERA_HEALTH_VALID_SAMPLES);
+
+    /*
+     * Permanent runtime camera watchdog. The RGB565 motion processor owns
+     * the heartbeat; if it stops for 10 seconds KORVO restarts autonomously.
+     */
+    camera_last_valid_frame_tick = xTaskGetTickCount();
+    camera_runtime_watchdog_enabled = true;
+
+    BaseType_t camera_wd_ret = xTaskCreate(
+        camera_runtime_watchdog_task,
+        "camera_watchdog",
+        4096,
+        NULL,
+        4,
+        NULL
+    );
+    if (camera_wd_ret != pdPASS) {
+        camera_runtime_watchdog_enabled = false;
+        ESP_LOGE(TAG, "Failed to create camera runtime watchdog task");
+    }
+
 
     /*
      * CAMERA-FIRST BOOT:
