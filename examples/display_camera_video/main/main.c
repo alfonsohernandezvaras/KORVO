@@ -32,6 +32,8 @@
 #include "face_detect.h"
 #include "korvo_hmi.h"
 #include "korvo_storage.h"
+#include "korvo_network.h"
+#include "korvo_web.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -848,6 +850,17 @@ void app_main(void)
     ESP_LOGI(TAG, "CAMERA HEALTH OK - motion %% valid (%lu/%d)",
              (unsigned long)camera_health_valid_samples,
              CAMERA_HEALTH_VALID_SAMPLES);
+
+    /* KORVO network/web starts only after validated camera health. */
+    esp_err_t network_ret = korvo_network_init();
+    if (network_ret != ESP_OK) {
+        ESP_LOGE(TAG, "KORVO network unavailable: %s", esp_err_to_name(network_ret));
+    } else {
+        esp_err_t web_ret = korvo_web_start();
+        if (web_ret != ESP_OK) {
+            ESP_LOGE(TAG, "KORVO web server unavailable: %s", esp_err_to_name(web_ret));
+        }
+    }
 
     /*
      * Permanent runtime camera watchdog. The RGB565 motion processor owns
