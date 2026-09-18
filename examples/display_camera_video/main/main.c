@@ -34,6 +34,7 @@
 #include "korvo_storage.h"
 #include "korvo_network.h"
 #include "korvo_web.h"
+#include "korvo_update.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -708,6 +709,17 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG, "KORVO storage ready at %s (layout v%s)",
                  korvo_storage_root(), korvo_storage_layout_version());
+
+        /*
+         * SD UPDATE MANAGER runs before camera/HMI/network. A firmware uploaded
+         * from the web and marked pending is validated again and installed into
+         * the inactive OTA partition. On success this function reboots.
+         */
+        esp_err_t update_ret = korvo_update_boot_check();
+        if (update_ret != ESP_OK && update_ret != ESP_ERR_NOT_FOUND) {
+            ESP_LOGE(TAG, "Pending firmware update was NOT installed: %s",
+                     esp_err_to_name(update_ret));
+        }
     }
 
 #if SOC_PPA_SUPPORTED
