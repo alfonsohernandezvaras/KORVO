@@ -1,0 +1,18 @@
+KORVO1 V1.3.14 - WAV ALARMS + LOCAL TOUCH PAIR
+
+Cambios sobre V1.3.13:
+- Las 5 alarmas ya no se sintetizan en firmware. Se reproducen como WAV desde SD.
+- Formato obligatorio: PCM mono, 8000 Hz, 16-bit. Sin resampling.
+- Ruta: /sdcard/korvo/audio/alarms/
+  01_timbre.wav
+  02_doble_beep.wav
+  03_ascendente.wav
+  04_incendio.wav
+  05_critica.wav
+- PROBAR dura exactamente lo que dura el WAV.
+- 04_incendio.wav incluido: alarma pulsante estilo activacion de sistema contra incendio (~12 s).
+- Los archivos WAV se pueden reemplazar por otros manteniendo nombre/formato.
+- La pantalla Bluetooth local ahora permite tocar TODA la fila del dispositivo para PAIR/CONECTAR, no solo el boton pequeno.
+- Se mantiene el supervisor HFP SLC de V1.3.13 y el fix de service records.
+
+Copiar la carpeta korvo/ del paquete SD a la raiz de la SD (fusionar, no borrar datos existentes).

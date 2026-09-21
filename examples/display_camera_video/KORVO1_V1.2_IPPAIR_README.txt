@@ -1,0 +1,50 @@
+KORVO1 V1.2.0 - SIMPLE IP PAIRING
+=================================
+
+Goal
+----
+Match Gateway V2.5 simple reciprocal-IP pairing.
+
+Authorization rule
+------------------
+1. KORVO stores exactly one Gateway IPv4 address.
+2. Gateway stores exactly one KORVO IPv4 address.
+3. KORVO connects to ws://<configured-gateway-ip>/ws/korvo.
+4. Gateway admits the session only if the TCP source IPv4 equals its configured
+   KORVO IP.
+5. KORVO reports PAIRED / CONTROL OK only after the live Gateway session is
+   accepted and Gateway reports control enabled.
+
+Configuration behavior
+----------------------
+GUARDAR / CONECTAR stores the Gateway IP immediately. It does not require the
+Gateway to be online, does not scan, and does not validate MAC/name/location.
+VERIFY GATEWAY IP is an optional diagnostic HTTP check.
+
+No longer used for control
+--------------------------
+- Pair ID
+- Pair Key
+- HMAC challenge
+- MAC / BSSID binding
+- Name / Hostname / Location matching
+- 120-second enrollment window
+
+Old fields remain internally only where needed for NVS/source migration and are
+ignored by V1.2 authorization.
+
+Laboratory values
+-----------------
+- KORVO own IP: 192.168.10.50 in the current lab configuration
+- Initial Gateway suggestion: 192.168.10.51
+After saving, the configured Gateway IP from NVS is always used.
+
+Compatibility
+-------------
+KORVO V1.2 expects Gateway V2.5. If connected to an old V2.4 Gateway that sends
+a Pair-Key challenge, KORVO records an explicit message asking to update the
+Gateway instead of silently falling back.
+
+Build status
+------------
+Source candidate prepared for local build. No ESP-IDF build was performed here.

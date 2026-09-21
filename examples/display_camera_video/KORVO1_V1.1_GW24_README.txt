@@ -1,0 +1,94 @@
+KORVO1 V1.1 - GATEWAY V2.4 INTEGRATION
+=======================================
+Target: ESP32-S31 KORVO1
+Base project: display_camera_video
+Project version: 1.1.0
+
+PURPOSE
+-------
+This update adds the KORVO1 side of the frozen Gateway V2.4 integration while
+preserving the existing camera/display/SD/face code.
+
+NETWORK / ARCHITECTURE RULES
+----------------------------
+- 192.168.10.50 is only the current KORVO laboratory default.
+- 192.168.10.51 is only the current Gateway ENROLL suggestion.
+- No operational Gateway address is hardcoded.
+- After enrollment, KORVO uses only expected_gateway.ip persisted in NVS.
+- KORVO validates the enrolled Gateway MAC against the AP BSSID it is actually
+  associated with before opening the control WebSocket.
+- If enrolled IP/MAC/name/hostname/location no longer match, CONTROL remains
+  blocked. Expected values are never silently rewritten.
+- There is no normal network scan. A new Gateway is selected only during an
+  explicit ENROLL operation.
+
+ENROLLMENT FLOW
+---------------
+1. Configure KORVO local identity in KORVO webserver -> GATEWAY.
+2. On the Gateway webserver, arm KORVO enrollment (120 second window).
+3. On KORVO webserver -> GATEWAY, enter that node's Gateway IP and ENROLL.
+4. KORVO reads /api/device/identity from that exact IP.
+5. KORVO requires Gateway identity MAC == current Wi-Fi AP BSSID.
+6. KORVO POSTs its own identity to /api/gw/enroll/request.
+7. Gateway returns its identity + Pair ID + Pair Key.
+8. KORVO persists expected Gateway + Pair credentials in NVS namespace korvo_gw.
+9. KORVO connects to ws://<expected_gateway.ip>/ws/korvo.
+10. Gateway challenge is answered with HMAC-SHA256(pair_key, nonce|pair_id).
+11. GATEWAY OK + Pair HMAC + Gateway control approval => CONTROL OK.
+
+WEBSOCKET / EVENTS
+------------------
+- Heartbeat: sys.ping + sys.status every 5 seconds after authentication.
+- 15 second receive timeout forces a WebSocket restart.
+- Any Wi-Fi reassociation whose BSSID does not match the enrolled Gateway MAC
+  immediately tears down the WebSocket/control session.
+- Generic Gateway events are exposed through korvo_gateway_add_listener().
+  This is ready for reader.card, REX, door, CALL, SIP, Bluetooth/audio and the
+  future multimethod authentication engine.
+
+COMMAND API READY FOR KORVO AUTH ENGINE
+---------------------------------------
+- door.unlock / door.lock
+- beacon.on / beacon.off / beacon.flash
+- wiegand.tx
+- sip.call / sip.answer / sip.reject / sip.hangup
+- sys.status
+Field-changing commands are refused locally unless CONTROL OK is true.
+
+HMI
+---
+A permanent bottom footer shows:
+  <ROOM> · <GATEWAY> | GW OK/--- | CTRL OK/BLOCK | SIP ...
+The face instruction was moved to the top margin and the Gateway footer to the
+bottom margin so status information does not occupy the central face ROI.
+
+WEBSERVER
+---------
+New page: /gateway
+Public identity endpoint: /api/device/identity
+Protected Gateway status endpoint: /api/korvo/gateway/status
+The Pair Key is never rendered by KORVO web pages or public identity API.
+
+IMPORTANT ABOUT REMOVE PAIRING
+------------------------------
+REMOVE LOCAL PAIRING clears only KORVO's local NVS pair. The Gateway still has
+its expected KORVO until pairing is removed from the Gateway webserver too.
+This is intentional in V1.1; one device cannot silently rewrite the other's
+trusted enrollment.
+
+BUILD
+-----
+main/idf_component.yml now adds:
+  espressif/esp_websocket_client: ^1.8.0
+
+CONFIG_WS_TRANSPORT=y is enabled in the active sdkconfig and the KORVO1 board
+sdkconfig. On first build/reconfigure the ESP-IDF Component Manager may update
+managed_components and dependencies.lock.
+
+Recommended after copying the update:
+  idf.py reconfigure
+  idf.py build
+
+Do not erase NVS unless intentionally resetting the KORVO network/pairing data.
+This package has NOT been built in the assistant environment; build/flash is
+left to the local ESP-IDF 6.1.0 toolchain.

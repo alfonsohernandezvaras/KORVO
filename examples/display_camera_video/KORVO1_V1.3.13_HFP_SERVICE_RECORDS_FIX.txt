@@ -1,0 +1,35 @@
+KORVO1 V1.3.13 - HFP SERVICE RECORDS FIX
+========================================
+
+Observed on real ESP32-S31 / ESP-IDF 6.1 with SLEVE EVO:
+  BTM_SEC_REG: Out of Service Records (3)
+  BT_RFCOMM ... Start failed
+  Security Manager: MX service not found PSM:3 Proto:3 SCN:4
+  HFP link state=0
+
+Diagnosis:
+The peer is bonded, but the outgoing HFP AG -> HF RFCOMM/SLC connection cannot
+reserve/find a Bluedroid security service record. The generated table contains
+only 3 records in this Classic BT/HFP AG configuration.
+
+Changes:
+1. Global Bluedroid compile definition:
+     BTM_SEC_MAX_SERVICE_RECORDS=8
+   This is intentionally small; it only gives HFP/HSP/SDP security bookkeeping
+   enough room for the outgoing AG connection.
+2. Initial post-auth SLC attempt delayed to 1 s.
+3. After a real HFP disconnect/failure, supervisor retries every 5 s rather than
+   the previous ~0.5-1 s loop.
+4. No changes to SIP, RTP, camera, Gateway protocol, alarm synthesis, pairing
+   database, or local/remote Bluetooth UI.
+
+Expected runtime sequence:
+  PAIR PAIRED
+  HFP supervisor -> SLC connect <MAC>
+  HFP link state=1
+  HFP link state=2
+  HFP link state=3
+
+State 3 = ESP_HF_CONNECTION_STATE_SLC_CONNECTED.
+After that the HF device should produce its own connected beep/voice and the
+alarm PROBAR action can open SCO/eSCO.

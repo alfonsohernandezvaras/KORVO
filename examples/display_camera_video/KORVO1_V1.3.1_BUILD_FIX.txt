@@ -1,0 +1,19 @@
+KORVO1 V1.3.1 - ESP-IDF 6.1 / GCC 15 Bluedroid build fix
+
+Problem observed:
+- Build stops inside ESP-IDF component bt, file bta_dm_act.c.
+- GCC 15 reports -Wstringop-truncation from BCM_STRNCPY_S/strncpy.
+- Because the project has global -Werror, the warning becomes an error.
+
+Fix:
+- Enable the ESP-IDF compiler compatibility option:
+  CONFIG_COMPILER_DISABLE_DEFAULT_ERRORS=y
+- This is the same option suggested by ESP-IDF in the build log:
+  Compiler options -> Disable errors for default warnings
+- No Bluetooth, SIP, Gateway pairing, HMI, camera, or access logic was changed.
+
+Version:
+- PROJECT_VER = 1.3.1
+
+Build normally with:
+  idf.py build

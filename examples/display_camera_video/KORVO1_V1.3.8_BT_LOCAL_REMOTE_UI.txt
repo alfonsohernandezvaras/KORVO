@@ -1,0 +1,54 @@
+KORVO1 V1.3.8 - Bluetooth local + remote pairing UI
+
+Base: V1.3.7 BT SCAN UI FIX.
+
+Objetivo
+- Gestionar Bluetooth tanto desde la pantalla touch KORVO como desde el webserver.
+- No dejar un boton PAIR ni una ventana persistente sobre la camara.
+- Mantener una sola logica Bluetooth compartida por UI local y remota.
+
+Pantalla KORVO
+- La franja inferior permanente ahora refleja Bluetooth:
+  BT OFF
+  BT ON
+  BT PAIR:<dispositivo>
+- La franja inferior es tocable. Al tocarla se abre una pantalla Bluetooth dedicada, de pantalla completa.
+- Al volver con < CAMARA la interfaz Bluetooth se oculta completamente y reaparece la camara sin overlay residual.
+- Pantalla Bluetooth local:
+  ENCENDER/APAGAR
+  SCAN
+  lista de hasta 12 dispositivos
+  PAIR / CONECTAR por dispositivo
+  DESCONECTAR
+  OLVIDAR
+  estado PAIR / HFP / AUDIO
+- Si entra standby, la pantalla Bluetooth se cierra y el screensaver negro conserva prioridad.
+
+Webserver /intercom
+- Mantiene la configuracion Bluetooth existente.
+- Agrega estado PAIR: PAIRED / NOT PAIRED.
+- Agrega boton directo ENCENDER/APAGAR BLUETOOTH.
+- Mantiene SCAN y la lista remota con PAIR / CONNECT.
+- Las acciones remotas NO abren ni dejan ventanas sobre la pantalla de camara; solo actualizan el estado local/footer.
+
+Backend Bluetooth
+- Se agrega estado explicito paired.
+- APAGAR Bluetooth lo deja no-connectable/no-discoverable y desconecta HFP; ENCENDER restaura discoverable/connectable sin reiniciar toda la KORVO.
+- Un dispositivo solo queda persistido como peer despues de autenticacion o HFP SLC exitoso.
+- Un intento de pairing fallido no reemplaza el peer guardado.
+- El nombre encontrado en SCAN se refleja inmediatamente mientras conecta.
+
+Sin cambios en
+- Pairing Gateway <-> KORVO por IP/WebSocket.
+- SIP/RTP.
+- Alarmas Bluetooth.
+- Camara / reconocimiento.
+- Particiones.
+
+IMPORTANTE
+Esta version NO fue compilada dentro del entorno de ChatGPT. Compilar localmente con ESP-IDF 6.1:
+  idf.py fullclean
+  idf.py build
+
+Despues:
+  idf.py -p COM3 flash monitor

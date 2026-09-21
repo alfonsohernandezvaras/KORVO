@@ -50,6 +50,9 @@ static const char *s_required_dirs[] = {
     BSP_SD_MOUNT_POINT "/korvo/access/permissions",
     BSP_SD_MOUNT_POINT "/korvo/access/io-maps",
 
+    BSP_SD_MOUNT_POINT "/korvo/audio",
+    BSP_SD_MOUNT_POINT "/korvo/audio/alarms",
+
     BSP_SD_MOUNT_POINT "/korvo/sip",
     BSP_SD_MOUNT_POINT "/korvo/events",
     BSP_SD_MOUNT_POINT "/korvo/logs",

@@ -1,0 +1,10 @@
+KORVO1 V1.3.7 - Bluetooth SCAN / UI fix
+
+- Partida desde V1.3.6 WebStack fix sobre V1.3.5 funcional.
+- Corrige el comportamiento de SCAN cuando Bluetooth HFP esta deshabilitado:
+  ahora deja un error visible en la pagina en vez de parecer que no hizo nada.
+- El webserver mantiene la posicion en #bluetooth / #bt-devices despues de Guardar, Scan y acciones BT.
+- Mientras el inquiry esta activo, la pagina refresca la seccion de dispositivos sin saltar al inicio.
+- Mensaje visible cuando HFP esta DESHABILITADO.
+- Inquiry Classic BT se mantiene en 8 * 1.28 s (~10.24 s).
+- No cambia SIP, alarmas, Gateway pairing ni audio RTP.

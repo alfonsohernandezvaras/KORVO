@@ -16,7 +16,9 @@ extern "C" {
 #define KORVO_WIFI_DEFAULT_GATEWAY       "192.168.10.1"
 #define KORVO_WIFI_DEFAULT_DNS           "192.168.10.1"
 
-/* Nodo de I/O / Gateway KORVO. No es el gateway IP de la interfaz. */
+/* Solo sugerencia inicial para el enrolamiento de laboratorio.
+ * El control real usa exclusivamente expected_gateway.ip guardado por
+ * korvo_gateway tras un ENROLL exitoso. */
 #define KORVO_GATEWAY_DEFAULT_IP         "192.168.10.51"
 
 typedef struct
@@ -29,6 +31,7 @@ typedef struct
     char network_gateway[16];
     char dns[16];
 
+    /* Legacy/UI hint only. Never used as trusted peer after enrollment. */
     char gateway_node_ip[16];
 
     /*

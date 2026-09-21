@@ -1,0 +1,24 @@
+KORVO1 V1.3.2 - ESP-IDF 6.1 / GCC 15 BLUEDROID BUILD FIX
+
+Problem observed in V1.3.1:
+  components/bt/host/bluedroid/bta/dm/bta_dm_act.c
+  -Werror=stringop-truncation from BCM_STRNCPY_S / strncpy.
+
+The V1.3.1 CONFIG_COMPILER_DISABLE_DEFAULT_ERRORS=y setting was active, but
+ESP-IDF converted -Werror to -Werror=all and GCC 15 still stopped on this
+framework warning.
+
+V1.3.2 adds, after project(display_camera_new):
+  idf_build_set_property(COMPILE_OPTIONS
+                         "-Wno-error=stringop-truncation" APPEND)
+
+This is a build-only compatibility fix. It does not change:
+- KORVO/Gateway IP pairing
+- SIP logic
+- RTP/audio bridge
+- Bluetooth HFP AG logic
+- camera/HMI/access logic
+
+Recommended build:
+  idf.py fullclean
+  idf.py build

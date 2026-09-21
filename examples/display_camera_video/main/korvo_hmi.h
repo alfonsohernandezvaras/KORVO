@@ -1,7 +1,9 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "face_detect.h"
+#include "korvo_bluetooth.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,6 +50,22 @@ void korvo_hmi_update_storage(bool sd_ok,
                               int storage_state,
                               uint64_t used_bytes,
                               uint64_t free_bytes);
+
+
+/* Permanent bottom status strip. Central camera/face ROI stays free of status text. */
+/* Dedicated local Bluetooth screen. Same backend as the remote web UI. */
+void korvo_hmi_update_bluetooth(const korvo_bluetooth_status_t *bt);
+
+void korvo_hmi_update_gateway_status(const char *room,
+                                     const char *gateway_name,
+                                     bool gateway_ok,
+                                     bool control_ok,
+                                     bool sip_registered,
+                                     const char *sip_state,
+                                     bool bt_enabled,
+                                     bool bt_paired,
+                                     bool bt_connected,
+                                     const char *bt_peer);
 
 korvo_hmi_face_state_t korvo_hmi_face_state(void);
 

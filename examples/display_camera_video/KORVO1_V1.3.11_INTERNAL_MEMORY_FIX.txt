@@ -1,0 +1,31 @@
+KORVO1 V1.3.11 - INTERNAL RAM / WIFI TIMER NO_MEM FIX
+
+Root cause confirmed by runtime log:
+- ESP_ERR_NO_MEM in esp_timer_create() during Wi-Fi reconnect.
+- The crash occurs after HFP/web/auxiliary services have consumed scarce internal RAM.
+- V1.3.10 removed the WebSocket retry storm, but internal RAM headroom was still too small.
+
+Changes:
+1. PSRAM policy
+   - CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: 16384 -> 4096
+   - CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+   - CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+   This moves eligible Wi-Fi/LWIP/BT allocations/BSS to the 16 MB PSRAM and preserves internal RAM for timers, DMA and task stacks.
+   - Gateway 4 KB WebSocket RX buffer explicitly moved to external BSS (PSRAM).
+
+2. SIP lazy task
+   - The 9216-byte SIP task stack is no longer allocated while SIP is disabled.
+   - Enabling SIP from the web UI starts the SIP task on demand.
+
+3. HTTP server stack
+   - Reduced 16384 -> 12288 bytes.
+   - Large generated HTML buffers remain on heap from the previous web-stack fix.
+
+4. Memory telemetry
+   - Logs internal free RAM, largest internal block and free PSRAM at key startup stages.
+
+Unchanged:
+- Gateway reciprocal-IP pairing logic.
+- Bluetooth HFP pairing/UI/alarm behavior.
+- Camera pipeline and camera watchdog policy.
+- SIP protocol behavior once SIP is enabled.

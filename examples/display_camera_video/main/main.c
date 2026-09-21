@@ -20,6 +20,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_attr.h"
+#include "esp_heap_caps.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -33,10 +34,14 @@
 #include "korvo_hmi.h"
 #include "korvo_storage.h"
 #include "korvo_network.h"
+#include "korvo_gateway.h"
 #include "korvo_web.h"
 #include "korvo_update.h"
+#include "korvo_intercom.h"
+#include "korvo_sip.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 
 #define NUM_BUFS 2
@@ -48,6 +53,18 @@ typedef struct {
 } mmap_buf_t;
 
 static const char *TAG = "example";
+
+static void log_memory_headroom(const char *stage)
+{
+    size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    ESP_LOGI(TAG, "MEM %s: internal_free=%u largest=%u psram_free=%u",
+             stage ? stage : "--",
+             (unsigned)internal_free,
+             (unsigned)internal_largest,
+             (unsigned)psram_free);
+}
 
 #if SOC_PPA_SUPPORTED
 static ppa_client_handle_t ppa_srm_handle = NULL;
@@ -292,10 +309,9 @@ static void motion_process_rgb565(const uint8_t *camera_buf,
 
     motion_percent_x10 = (uint32_t)((changed * 1000U) / total);
 
-    /* A computed percentage, including 0.0%, proves real RGB565 processing.
-     * It is also the permanent camera heartbeat.
+    /* A computed percentage, including 0.0%, proves real RGB565 motion processing.
+     * Runtime watchdog heartbeat is updated by every received camera frame above.
      */
-    camera_last_valid_frame_tick = xTaskGetTickCount();
 
     if (camera_health_valid_samples < CAMERA_HEALTH_VALID_SAMPLES) {
         camera_health_valid_samples++;
@@ -401,7 +417,7 @@ static void face_detection_task(void *arg)
 
     if (!face_detect_init()) {
         ESP_LOGE(TAG, "Failed to initialize face detector");
-        vTaskDelete(NULL);
+        vTaskDeleteWithCaps(NULL);
         return;
     }
 
@@ -501,6 +517,12 @@ static void face_detection_task(void *arg)
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
 {
+    /* Runtime camera watchdog heartbeat: a real callback means the camera/video
+     * path is alive. Do not tie the watchdog to the heavier motion algorithm. */
+    if (camera_buf != NULL && camera_buf_len > 0) {
+        camera_last_valid_frame_tick = xTaskGetTickCount();
+    }
+
     uint32_t out_w = camera_buf_hes;
     uint32_t out_h = camera_buf_ves ;
     uint8_t *out_buf = camera_buf;
@@ -605,7 +627,7 @@ static void camera_runtime_watchdog_task(void *arg)
         uint32_t age_ms = (uint32_t)((now - last) * portTICK_PERIOD_MS);
         if (age_ms >= CAMERA_RUNTIME_WATCHDOG_TIMEOUT_MS) {
             ESP_LOGE(TAG,
-                     "CAMERA RUNTIME WATCHDOG TIMEOUT - no valid RGB565 processing for %lu ms - restarting",
+                     "CAMERA RUNTIME WATCHDOG TIMEOUT - no camera frames for %lu ms - restarting",
                      (unsigned long)age_ms);
             vTaskDelay(pdMS_TO_TICKS(250));
             esp_restart();
@@ -655,6 +677,55 @@ static void storage_watchdog_task(void *arg)
          * checking and the HMI remains operational so the fault is visible.
          */
         vTaskDelay(pdMS_TO_TICKS(STORAGE_WATCHDOG_POLL_MS));
+    }
+}
+
+
+static const char *sip_hmi_state(korvo_sip_state_t state)
+{
+    switch (state) {
+        case KORVO_SIP_CALLING: return "LLAMANDO";
+        case KORVO_SIP_RINGING: return "TIMBRANDO";
+        case KORVO_SIP_INCOMING: return "ENTRANTE";
+        case KORVO_SIP_CONNECTING: return "CONECTANDO";
+        case KORVO_SIP_CONNECTED: return "EN LLAMADA";
+        case KORVO_SIP_BUSY: return "OCUPADO";
+        case KORVO_SIP_NO_ANSWER: return "SIN RESP";
+        case KORVO_SIP_REJECTED: return "RECHAZADA";
+        case KORVO_SIP_FAILED: return "ERROR";
+        case KORVO_SIP_REGISTERING: return "REG...";
+        case KORVO_SIP_IDLE: return "IDLE";
+        case KORVO_SIP_DISABLED: return "OFF";
+        case KORVO_SIP_OFFLINE: return "OFFLINE";
+        case KORVO_SIP_ENDED: return "FINALIZADA";
+        default: return "---";
+    }
+}
+
+static void gateway_hmi_task(void *arg)
+{
+    (void)arg;
+    /* Keep the large Bluetooth scan snapshot out of this 4 KB task stack. */
+    static korvo_gateway_status_t gw;
+    static korvo_sip_status_t sip;
+    static korvo_bluetooth_status_t bt;
+    for (;;) {
+        korvo_bluetooth_supervise();
+        korvo_gateway_get_status(&gw);
+        korvo_sip_get_status(&sip);
+        korvo_bluetooth_get_status(&bt);
+        korvo_hmi_update_bluetooth(&bt);
+        korvo_hmi_update_gateway_status(gw.local.hostname,
+                                        gw.expected_gateway.name,
+                                        gw.gateway_ok,
+                                        gw.control_ok,
+                                        sip.registered,
+                                        sip_hmi_state(sip.state),
+                                        bt.enabled,
+                                        bt.paired,
+                                        bt.slc_connected,
+                                        bt.peer_name[0] ? bt.peer_name : bt.peer_mac);
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
@@ -863,15 +934,39 @@ void app_main(void)
              (unsigned long)camera_health_valid_samples,
              CAMERA_HEALTH_VALID_SAMPLES);
 
-    /* KORVO network/web starts only after validated camera health. */
+    /* KORVO network + Gateway V2.5 integration starts only after validated
+     * camera health. Pairing is reciprocal-IP only; the lab .51 is merely the
+     * initial suggestion until an explicit Gateway IP is saved in NVS. */
+    log_memory_headroom("before network");
     esp_err_t network_ret = korvo_network_init();
+    log_memory_headroom("after network");
     if (network_ret != ESP_OK) {
         ESP_LOGE(TAG, "KORVO network unavailable: %s", esp_err_to_name(network_ret));
-    } else {
-        esp_err_t web_ret = korvo_web_start();
-        if (web_ret != ESP_OK) {
-            ESP_LOGE(TAG, "KORVO web server unavailable: %s", esp_err_to_name(web_ret));
-        }
+    }
+
+    esp_err_t gateway_ret = korvo_gateway_init();
+    if (gateway_ret != ESP_OK) {
+        ESP_LOGE(TAG, "KORVO Gateway integration unavailable: %s", esp_err_to_name(gateway_ret));
+    }
+
+    /* V1.3 intercom lives in KORVO: SIP/RTP + Bluetooth HFP AG.
+     * Gateway remains field I/O and contributes only CALL button events. */
+    esp_err_t intercom_ret = korvo_intercom_init();
+    log_memory_headroom("after intercom");
+    if (intercom_ret != ESP_OK) {
+        ESP_LOGW(TAG, "KORVO intercom unavailable: %s", esp_err_to_name(intercom_ret));
+    }
+
+    esp_err_t web_ret = korvo_web_start();
+    log_memory_headroom("after web");
+    if (web_ret != ESP_OK) {
+        ESP_LOGE(TAG, "KORVO web server unavailable: %s", esp_err_to_name(web_ret));
+    }
+
+    /* This task now also owns the lightweight Bluetooth HFP link supervisor,
+     * therefore it runs even if the Gateway link is temporarily unavailable. */
+    if (xTaskCreate(gateway_hmi_task, "gateway_hmi", 4096, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create status/Bluetooth supervisor task");
     }
 
     /*
@@ -922,13 +1017,20 @@ void app_main(void)
 
     ESP_LOGI(TAG, "KORVO auxiliary services ENABLED: motion/screensaver + ESP-DL");
 
-    BaseType_t ai_task_ret = xTaskCreate(
+    log_memory_headroom("before face AI task");
+    /*
+     * ESP-DL is our largest remaining internal-RAM pressure point.  Keep the
+     * face task stack in PSRAM so internal RAM remains available for BT/SIP,
+     * timers and DMA.  The detector itself is unchanged.
+     */
+    BaseType_t ai_task_ret = xTaskCreateWithCaps(
         face_detection_task,
         "face_ai",
         8192,
         NULL,
         5,
-        NULL
+        NULL,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
     );
 
     if (ai_task_ret != pdPASS) {
@@ -936,6 +1038,7 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG, "ESP-DL face detection task started");
     }
+    log_memory_headroom("after face AI task");
 
     /*
      * Do NOT force the screensaver here. Motion owns standby from now on

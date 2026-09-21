@@ -7,8 +7,14 @@ idf_component_register(
         "korvo_storage.c"
         "korvo_hmi.c"
         "korvo_network.c"
+        "korvo_gateway.c"
         "korvo_web.c"
         "korvo_update.c"
+        "korvo_sip.c"
+        "korvo_bluetooth.c"
+        "korvo_audio_bridge.c"
+        "korvo_alarm.c"
+        "korvo_intercom.c"
 
     INCLUDE_DIRS
         "."
@@ -20,8 +26,12 @@ idf_component_register(
         esp_netif
         esp_event
         esp_http_server
+        esp_http_client
+        esp_websocket_client
         esp_timer
+        esp_rom
         esp_app_format
         app_update
         mbedtls
+        bt
 )

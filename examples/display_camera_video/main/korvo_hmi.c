@@ -2,8 +2,10 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
+#include "korvo_bluetooth.h"
 
 static const char *TAG = "korvo_hmi";
 
@@ -13,7 +15,32 @@ static lv_obj_t *s_face_box = NULL;
 static lv_obj_t *s_face_center = NULL;
 static lv_obj_t *s_motion_diag = NULL;
 static lv_obj_t *s_storage_diag = NULL;
-static lv_obj_t *s_screensaver = NULL;
+static lv_obj_t *s_gateway_footer = NULL;
+static lv_obj_t *s_volume_slider = NULL;
+static lv_obj_t *s_volume_label = NULL;
+static lv_obj_t *s_mic_slider = NULL;
+static lv_obj_t *s_mic_label = NULL;
+
+/* Dedicated local Bluetooth UI. It is a full-screen mode, hidden when not in use,
+ * so the camera view is restored cleanly with no persistent overlay. */
+static lv_obj_t *s_bt_panel = NULL;
+static lv_obj_t *s_bt_status_label = NULL;
+static lv_obj_t *s_bt_error_label = NULL;
+static lv_obj_t *s_bt_power_btn = NULL;
+static lv_obj_t *s_bt_power_btn_label = NULL;
+static lv_obj_t *s_bt_scan_btn = NULL;
+static lv_obj_t *s_bt_scan_btn_label = NULL;
+static lv_obj_t *s_bt_link_btn = NULL;
+static lv_obj_t *s_bt_link_btn_label = NULL;
+static lv_obj_t *s_bt_list = NULL;
+static lv_obj_t *s_bt_list_hint = NULL;
+static lv_obj_t *s_bt_device_row[KORVO_BT_SCAN_MAX] = {0};
+static lv_obj_t *s_bt_device_label[KORVO_BT_SCAN_MAX] = {0};
+static lv_obj_t *s_bt_device_btn[KORVO_BT_SCAN_MAX] = {0};
+static lv_obj_t *s_bt_device_btn_label[KORVO_BT_SCAN_MAX] = {0};
+static char s_bt_device_mac[KORVO_BT_SCAN_MAX][KORVO_BT_MAC_MAX] = {{0}};
+static volatile bool s_bt_panel_visible = false;
+
 static bool s_awake = false;
 static korvo_hmi_face_state_t s_face_state = KORVO_HMI_FACE_NONE;
 
@@ -59,6 +86,258 @@ typedef struct {
 } face_track_t;
 
 static face_track_t s_track = {0};
+
+static lv_obj_t *make_touch_button(lv_obj_t *parent, const char *text,
+                                   int width, int height, lv_obj_t **label_out)
+{
+    lv_obj_t *btn = lv_obj_create(parent);
+    lv_obj_remove_style_all(btn);
+    lv_obj_set_size(btn, width, height);
+    lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_BLUE, 2), 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(btn, 1, 0);
+    lv_obj_set_style_border_color(btn, lv_palette_lighten(LV_PALETTE_BLUE, 2), 0);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *label = lv_label_create(btn);
+    lv_label_set_text(label, text ? text : "");
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    lv_obj_center(label);
+    if (label_out) *label_out = label;
+    return btn;
+}
+
+static void bt_local_set_error(const char *text)
+{
+    if (!s_bt_error_label) return;
+    lv_label_set_text(s_bt_error_label, (text && text[0]) ? text : "--");
+}
+
+static void volume_label_update(uint8_t value)
+{
+    if (!s_volume_label) return;
+    char text[24];
+    snprintf(text, sizeof(text), "VOL\n%u%%", (unsigned)value);
+    lv_label_set_text(s_volume_label, text);
+}
+
+static void volume_slider_cb(lv_event_t *e)
+{
+    if (!s_volume_slider) return;
+    int value = lv_slider_get_value(s_volume_slider);
+    if (value < 0) value = 0;
+    if (value > 100) value = 100;
+
+    bool persist = lv_event_get_code(e) == LV_EVENT_RELEASED;
+    esp_err_t err = korvo_bluetooth_set_output_volume((uint8_t)value, persist);
+    if (err == ESP_OK) {
+        volume_label_update((uint8_t)value);
+    } else {
+        ESP_LOGW(TAG, "Volume update failed: %s", esp_err_to_name(err));
+    }
+}
+
+static void mic_label_update(uint8_t value)
+{
+    if (!s_mic_label) return;
+    char text[24];
+    snprintf(text, sizeof(text), "MIC\n%u%%", (unsigned)value);
+    lv_label_set_text(s_mic_label, text);
+}
+
+static void mic_slider_cb(lv_event_t *e)
+{
+    if (!s_mic_slider) return;
+    int value = lv_slider_get_value(s_mic_slider);
+    if (value < 0) value = 0;
+    if (value > 100) value = 100;
+    bool persist = lv_event_get_code(e) == LV_EVENT_RELEASED;
+    esp_err_t err = korvo_bluetooth_set_mic_gain((uint8_t)value, persist);
+    if (err == ESP_OK) mic_label_update((uint8_t)value);
+    else ESP_LOGW(TAG, "Mic gain update failed: %s", esp_err_to_name(err));
+}
+
+static void bt_open_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!s_bt_panel) return;
+    s_bt_panel_visible = true;
+    lv_obj_clear_flag(s_bt_panel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_bt_panel);
+}
+
+static void bt_back_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!s_bt_panel) return;
+    s_bt_panel_visible = false;
+    lv_obj_add_flag(s_bt_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void bt_power_cb(lv_event_t *e)
+{
+    (void)e;
+    korvo_bluetooth_config_t cfg = {0};
+    esp_err_t err = korvo_bluetooth_get_config(&cfg);
+    if (err == ESP_OK) {
+        cfg.enabled = !cfg.enabled;
+        err = korvo_bluetooth_save_config(&cfg);
+    }
+    bt_local_set_error(err == ESP_OK ? "--" : esp_err_to_name(err));
+}
+
+static void bt_scan_cb(lv_event_t *e)
+{
+    (void)e;
+    esp_err_t err = korvo_bluetooth_scan();
+    bt_local_set_error(err == ESP_OK ? "Escaneando dispositivos..." : esp_err_to_name(err));
+}
+
+static void bt_link_cb(lv_event_t *e)
+{
+    (void)e;
+    korvo_bluetooth_status_t st = {0};
+    korvo_bluetooth_get_status(&st);
+    esp_err_t err = ESP_ERR_INVALID_STATE;
+
+    if (st.slc_connected || st.connecting) {
+        err = korvo_bluetooth_disconnect();
+        bt_local_set_error(err == ESP_OK ? "Desconectando HFP..." : esp_err_to_name(err));
+        return;
+    }
+
+    korvo_bluetooth_config_t cfg = {0};
+    if (korvo_bluetooth_get_config(&cfg) == ESP_OK && cfg.peer_mac[0]) {
+        err = korvo_bluetooth_connect(cfg.peer_mac);
+    }
+    bt_local_set_error(err == ESP_OK ? "Conectando HFP..." : esp_err_to_name(err));
+}
+
+static void bt_forget_cb(lv_event_t *e)
+{
+    (void)e;
+    esp_err_t err = korvo_bluetooth_forget();
+    bt_local_set_error(err == ESP_OK ? "Dispositivo olvidado" : esp_err_to_name(err));
+}
+
+static void bt_device_cb(lv_event_t *e)
+{
+    lv_obj_t *target = lv_event_get_current_target_obj(e);
+    for (size_t i = 0; i < KORVO_BT_SCAN_MAX; ++i) {
+        /* The whole device row is touchable, not only the small action button.
+         * This makes local pairing behave like the web UI and is much easier
+         * to use on the 800x480 touch panel. */
+        if (target == s_bt_device_btn[i] || target == s_bt_device_row[i]) {
+            if (!s_bt_device_mac[i][0]) return;
+            esp_err_t err = korvo_bluetooth_connect(s_bt_device_mac[i]);
+            bt_local_set_error(err == ESP_OK ? "PAIR / conexion iniciada..." : esp_err_to_name(err));
+            return;
+        }
+    }
+}
+
+static void build_bluetooth_panel(lv_obj_t *screen)
+{
+    s_bt_panel = lv_obj_create(screen);
+    lv_obj_remove_style_all(s_bt_panel);
+    lv_obj_set_pos(s_bt_panel, 0, 0);
+    lv_obj_set_size(s_bt_panel, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    lv_obj_set_style_bg_color(s_bt_panel, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_bg_opa(s_bt_panel, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(s_bt_panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *back = make_touch_button(s_bt_panel, "< CAMARA", 110, 40, NULL);
+    lv_obj_align(back, LV_ALIGN_TOP_LEFT, 8, 8);
+    lv_obj_add_event_cb(back, bt_back_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *title = lv_label_create(s_bt_panel);
+    lv_label_set_text(title, "BLUETOOTH");
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+
+    s_bt_power_btn = make_touch_button(s_bt_panel, "ENCENDER", 150, 40, &s_bt_power_btn_label);
+    lv_obj_align(s_bt_power_btn, LV_ALIGN_TOP_RIGHT, -8, 8);
+    lv_obj_add_event_cb(s_bt_power_btn, bt_power_cb, LV_EVENT_CLICKED, NULL);
+
+    s_bt_status_label = lv_label_create(s_bt_panel);
+    lv_label_set_text(s_bt_status_label, "BLUETOOTH: --\nPAIR: --\nHFP: --   AUDIO: --");
+    lv_obj_set_width(s_bt_status_label, BSP_LCD_H_RES - 24);
+    lv_obj_set_style_text_color(s_bt_status_label, lv_color_white(), 0);
+    lv_obj_set_style_bg_color(s_bt_status_label, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_bt_status_label, LV_OPA_40, 0);
+    lv_obj_set_style_pad_all(s_bt_status_label, 6, 0);
+    lv_obj_align(s_bt_status_label, LV_ALIGN_TOP_MID, 0, 56);
+
+    s_bt_scan_btn = make_touch_button(s_bt_panel, "SCAN", 110, 38, &s_bt_scan_btn_label);
+    lv_obj_align(s_bt_scan_btn, LV_ALIGN_TOP_LEFT, 8, 112);
+    lv_obj_add_event_cb(s_bt_scan_btn, bt_scan_cb, LV_EVENT_CLICKED, NULL);
+
+    s_bt_link_btn = make_touch_button(s_bt_panel, "CONECTAR", 135, 38, &s_bt_link_btn_label);
+    lv_obj_align(s_bt_link_btn, LV_ALIGN_TOP_LEFT, 126, 112);
+    lv_obj_add_event_cb(s_bt_link_btn, bt_link_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *forget = make_touch_button(s_bt_panel, "OLVIDAR", 100, 38, NULL);
+    lv_obj_align(forget, LV_ALIGN_TOP_LEFT, 269, 112);
+    lv_obj_add_event_cb(forget, bt_forget_cb, LV_EVENT_CLICKED, NULL);
+
+    s_bt_error_label = lv_label_create(s_bt_panel);
+    lv_label_set_text(s_bt_error_label, "--");
+    lv_obj_set_width(s_bt_error_label, BSP_LCD_H_RES - 390);
+    lv_obj_set_style_text_color(s_bt_error_label, lv_palette_main(LV_PALETTE_ORANGE), 0);
+    lv_obj_align(s_bt_error_label, LV_ALIGN_TOP_RIGHT, -8, 122);
+
+    s_bt_list = lv_obj_create(s_bt_panel);
+    lv_obj_set_pos(s_bt_list, 8, 158);
+    lv_obj_set_size(s_bt_list, BSP_LCD_H_RES - 16, BSP_LCD_V_RES - 166);
+    lv_obj_set_style_bg_color(s_bt_list, lv_color_hex(0x18232e), 0);
+    lv_obj_set_style_bg_opa(s_bt_list, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_bt_list, 1, 0);
+    lv_obj_set_style_border_color(s_bt_list, lv_color_hex(0x405466), 0);
+    lv_obj_set_style_pad_all(s_bt_list, 4, 0);
+    lv_obj_add_flag(s_bt_list, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_bt_list_hint = lv_label_create(s_bt_list);
+    lv_label_set_text(s_bt_list_hint, "Pulse SCAN y ponga el dispositivo en modo pairing.");
+    lv_obj_set_width(s_bt_list_hint, BSP_LCD_H_RES - 70);
+    lv_obj_set_style_text_color(s_bt_list_hint, lv_palette_lighten(LV_PALETTE_GREY, 2), 0);
+    lv_obj_set_style_text_align(s_bt_list_hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_bt_list_hint, LV_ALIGN_TOP_MID, 0, 24);
+
+    const int row_h = 50;
+    for (size_t i = 0; i < KORVO_BT_SCAN_MAX; ++i) {
+        lv_obj_t *row = lv_obj_create(s_bt_list);
+        lv_obj_set_pos(row, 0, (int)i * row_h);
+        lv_obj_set_size(row, BSP_LCD_H_RES - 34, row_h - 3);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x202f3c), 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *label = lv_label_create(row);
+        lv_label_set_text(label, "--");
+        lv_obj_set_width(label, BSP_LCD_H_RES - 190);
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 6, 0);
+
+        lv_obj_t *act_label = NULL;
+        lv_obj_t *act = make_touch_button(row, "PAIR", 150, 34, &act_label);
+        lv_obj_align(act, LV_ALIGN_RIGHT_MID, -6, 0);
+        lv_obj_add_event_cb(act, bt_device_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(row, bt_device_cb, LV_EVENT_CLICKED, NULL);
+
+        s_bt_device_row[i] = row;
+        s_bt_device_label[i] = label;
+        s_bt_device_btn[i] = act;
+        s_bt_device_btn_label[i] = act_label;
+        s_bt_device_mac[i][0] = 0;
+        lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lv_obj_add_flag(s_bt_panel, LV_OBJ_FLAG_HIDDEN);
+}
 
 static void set_message(const char *text)
 {
@@ -154,7 +433,7 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_color(s_message, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_message, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(s_message, 8, 0);
-    lv_obj_align(s_message, LV_ALIGN_BOTTOM_MID, 0, -12);
+    lv_obj_align(s_message, LV_ALIGN_TOP_MID, 0, 6);
 
     /* Temporary engineering diagnostic for motion / standby calibration. */
     s_motion_diag = lv_label_create(screen);
@@ -184,19 +463,73 @@ void korvo_hmi_init(void)
     lv_obj_set_style_pad_all(s_storage_diag, 5, 0);
     lv_obj_align(s_storage_diag, LV_ALIGN_TOP_RIGHT, -6, 6);
 
-    /*
-     * Full-screen software screensaver.
-     * Created LAST so it can cover camera + HMI + diagnostics completely.
-     * It starts hidden; standby shows it as an opaque black layer.
-     */
-    s_screensaver = lv_obj_create(screen);
-    lv_obj_remove_style_all(s_screensaver);
-    lv_obj_set_pos(s_screensaver, 0, 0);
-    lv_obj_set_size(s_screensaver, BSP_LCD_H_RES, BSP_LCD_V_RES);
-    lv_obj_set_style_bg_color(s_screensaver, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_screensaver, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(s_screensaver, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_screensaver, LV_OBJ_FLAG_HIDDEN);
+    /* Permanent integration footer. It lives below the portrait guide so
+     * Gateway/Control/SIP state never covers the central camera ROI. */
+    s_gateway_footer = lv_label_create(screen);
+    lv_label_set_text(s_gateway_footer,
+                      "LAB · GW: --   | GW ---   | CTRL BLOCK   | SIP ---");
+    lv_obj_set_width(s_gateway_footer, BSP_LCD_H_RES - 12);
+    lv_obj_set_style_text_color(s_gateway_footer, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_gateway_footer, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(s_gateway_footer, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_gateway_footer, LV_OPA_80, 0);
+    lv_obj_set_style_pad_all(s_gateway_footer, 5, 0);
+    lv_obj_align(s_gateway_footer, LV_ALIGN_BOTTOM_MID, 0, -4);
+
+    /* Right-edge audio volume, kept outside the central camera/face ROI.
+     * This controls the PCM sent to the HFP/SCO device, so it works for both
+     * WAV alarms and SIP receive audio. */
+    s_volume_slider = lv_slider_create(screen);
+    lv_obj_set_size(s_volume_slider, 24, 178);
+    lv_obj_align(s_volume_slider, LV_ALIGN_RIGHT_MID, -8, 18);
+    lv_slider_set_range(s_volume_slider, 0, 100);
+    uint8_t initial_volume = korvo_bluetooth_get_output_volume();
+    lv_slider_set_value(s_volume_slider, initial_volume, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_volume_slider, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_volume_slider, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_volume_slider, lv_palette_main(LV_PALETTE_GREEN), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(s_volume_slider, lv_color_white(), LV_PART_KNOB);
+    lv_obj_add_event_cb(s_volume_slider, volume_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(s_volume_slider, volume_slider_cb, LV_EVENT_RELEASED, NULL);
+
+    s_volume_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(s_volume_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_volume_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(s_volume_label, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_volume_label, LV_OPA_70, 0);
+    lv_obj_set_style_pad_all(s_volume_label, 4, 0);
+    lv_obj_align_to(s_volume_label, s_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
+    volume_label_update(initial_volume);
+
+    /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
+    s_mic_slider = lv_slider_create(screen);
+    lv_obj_set_size(s_mic_slider, 24, 178);
+    lv_obj_align(s_mic_slider, LV_ALIGN_LEFT_MID, 8, 18);
+    lv_slider_set_range(s_mic_slider, 0, 100);
+    uint8_t initial_mic = korvo_bluetooth_get_mic_gain();
+    lv_slider_set_value(s_mic_slider, initial_mic, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_mic_slider, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_mic_slider, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_mic_slider, lv_palette_main(LV_PALETTE_GREEN), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(s_mic_slider, lv_color_white(), LV_PART_KNOB);
+    lv_obj_add_event_cb(s_mic_slider, mic_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(s_mic_slider, mic_slider_cb, LV_EVENT_RELEASED, NULL);
+    s_mic_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(s_mic_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_mic_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(s_mic_label, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_mic_label, LV_OPA_70, 0);
+    lv_obj_set_style_pad_all(s_mic_label, 4, 0);
+    lv_obj_align_to(s_mic_label, s_mic_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
+    mic_label_update(initial_mic);
+
+    /* Bluetooth local UI. Access is by touching the existing bottom status strip.
+     * No persistent PAIR button is placed over the camera image. */
+    lv_obj_add_flag(s_gateway_footer, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_gateway_footer, bt_open_cb, LV_EVENT_CLICKED, NULL);
+    build_bluetooth_panel(screen);
+
+    /* V1.3.18: visual screensaver removed. Camera/motion/watchdog chain remains untouched. */
 
     reset_face_track();
     s_face_state = KORVO_HMI_FACE_NONE;
@@ -206,41 +539,17 @@ void korvo_hmi_init(void)
 
 void korvo_hmi_sleep(void)
 {
+    /* V1.3.18: no visual screensaver. Keep this entry point because motion/camera
+     * logic already depends on it; do not disturb the proven camera/watchdog chain. */
     s_awake = false;
-    reset_face_track();
-    s_face_state = KORVO_HMI_FACE_NONE;
-    korvo_hmi_hide_face_track();
-
-    /*
-     * Software standby: cover the complete LCD with an opaque black LVGL
-     * object. Camera, AI, video, Wi-Fi and the LCD controller keep running.
-     */
-    if (s_screensaver != NULL) {
-        bsp_display_lock(0);
-        lv_obj_clear_flag(s_screensaver, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(s_screensaver);
-        bsp_display_unlock();
-    }
-
-    ESP_LOGI(TAG, "Standby: software screensaver BLACK");
 }
 
 void korvo_hmi_wake(void)
 {
     s_awake = true;
     reset_face_track();
-
-    /* Remove the black cover immediately on confirmed motion. */
-    if (s_screensaver != NULL) {
-        bsp_display_lock(0);
-        lv_obj_add_flag(s_screensaver, LV_OBJ_FLAG_HIDDEN);
-        bsp_display_unlock();
-    }
-
     s_face_state = KORVO_HMI_FACE_POSITION;
-    set_message("POSICIONE SU ROSTRO\\nEN EL RECUADRO");
-
-    ESP_LOGI(TAG, "Confirmed motion: software screensaver HIDDEN");
+    set_message("POSICIONE SU ROSTRO\nEN EL RECUADRO");
 }
 
 void korvo_hmi_no_face(void)
@@ -354,6 +663,20 @@ void korvo_hmi_track_face(const face_detection_t *face,
     }
     if (s_storage_diag != NULL) {
         lv_obj_move_foreground(s_storage_diag);
+    }
+    if (s_gateway_footer != NULL && !s_bt_panel_visible) {
+        lv_obj_move_foreground(s_gateway_footer);
+    }
+    if (s_volume_slider != NULL && !s_bt_panel_visible) {
+        lv_obj_move_foreground(s_volume_slider);
+    }
+    if (s_volume_label != NULL && !s_bt_panel_visible) {
+        lv_obj_move_foreground(s_volume_label);
+    }
+    if (s_mic_slider != NULL && !s_bt_panel_visible) lv_obj_move_foreground(s_mic_slider);
+    if (s_mic_label != NULL && !s_bt_panel_visible) lv_obj_move_foreground(s_mic_label);
+    if (s_bt_panel_visible && s_bt_panel != NULL) {
+        lv_obj_move_foreground(s_bt_panel);
     }
 
     bsp_display_unlock();
@@ -500,7 +823,8 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
 
     bsp_display_lock(0);
     lv_label_set_text(s_motion_diag, text);
-    lv_obj_move_foreground(s_motion_diag);
+    if (!s_bt_panel_visible) lv_obj_move_foreground(s_motion_diag);
+    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
     bsp_display_unlock();
 
 }
@@ -566,7 +890,152 @@ void korvo_hmi_update_storage(bool sd_ok,
 
     bsp_display_lock(0);
     lv_label_set_text(s_storage_diag, text);
-    lv_obj_move_foreground(s_storage_diag);
+    if (!s_bt_panel_visible) lv_obj_move_foreground(s_storage_diag);
+    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
+    bsp_display_unlock();
+}
+
+void korvo_hmi_update_bluetooth(const korvo_bluetooth_status_t *bt)
+{
+    if (!bt) return;
+
+    /* The detailed Bluetooth screen is hidden during normal camera operation.
+     * Do not churn LVGL labels/rows every 500 ms while it is hidden; the footer
+     * is updated separately and the panel refreshes immediately after opening. */
+    if (!s_bt_panel_visible) return;
+
+    char status[256];
+    const char *peer_name = bt->peer_name[0] ? bt->peer_name :
+                            (bt->peer_mac[0] ? bt->peer_mac : "--");
+    const char *power = bt->enabled ? "ENCENDIDO" : "APAGADO";
+    const char *pair = bt->paired ? "PAREADO" :
+                       (bt->peer_mac[0] ? "PAIR EN PROCESO" : "SIN PAIR");
+    const char *audio = bt->audio_connected ? "CONECTADO" : "DESCONECTADO";
+
+    snprintf(status, sizeof(status),
+             "BLUETOOTH: %s\nPAIR: %s - %.64s\nHFP: %s   AUDIO: %s",
+             power, pair, peer_name,
+             bt->slc_connected ? "CONECTADO" : (bt->connecting ? "CONECTANDO" : "DESCONECTADO"),
+             audio);
+
+    bsp_display_lock(0);
+    if (s_volume_slider) {
+        uint8_t volume = korvo_bluetooth_get_output_volume();
+        lv_slider_set_value(s_volume_slider, volume, LV_ANIM_OFF);
+        volume_label_update(volume);
+    }
+    if (s_mic_slider) {
+        uint8_t mic = korvo_bluetooth_get_mic_gain();
+        lv_slider_set_value(s_mic_slider, mic, LV_ANIM_OFF);
+        mic_label_update(mic);
+    }
+    if (s_bt_status_label) lv_label_set_text(s_bt_status_label, status);
+    if (s_bt_power_btn_label) lv_label_set_text(s_bt_power_btn_label, bt->enabled ? "APAGAR" : "ENCENDER");
+    if (s_bt_scan_btn_label) lv_label_set_text(s_bt_scan_btn_label, bt->scanning ? "ESCANEANDO..." : "SCAN");
+    if (s_bt_link_btn_label) {
+        lv_label_set_text(s_bt_link_btn_label,
+                          bt->slc_connected ? "DESCONECTAR" :
+                          (bt->connecting ? "CONECTANDO..." : "CONECTAR"));
+    }
+    if (s_bt_error_label) {
+        if (bt->last_error[0]) lv_label_set_text(s_bt_error_label, bt->last_error);
+        else if (bt->scanning) lv_label_set_text(s_bt_error_label, "Buscando dispositivos...");
+        else lv_label_set_text(s_bt_error_label, "--");
+    }
+    if (s_bt_list_hint) {
+        if (bt->device_count == 0) {
+            lv_label_set_text(s_bt_list_hint, bt->scanning ? "Buscando dispositivos Bluetooth..." :
+                              "Pulse SCAN y ponga el dispositivo en modo pairing.");
+            lv_obj_clear_flag(s_bt_list_hint, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(s_bt_list_hint, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    for (size_t i = 0; i < KORVO_BT_SCAN_MAX; ++i) {
+        if (!s_bt_device_row[i]) continue;
+        if (i < bt->device_count) {
+            const korvo_bluetooth_device_t *d = &bt->devices[i];
+            char row_text[160];
+            snprintf(row_text, sizeof(row_text), "%.63s\n%.17s   RSSI %d dBm",
+                     d->name[0] ? d->name : "--", d->mac, d->rssi);
+            lv_label_set_text(s_bt_device_label[i], row_text);
+
+            size_t n = strlen(d->mac);
+            if (n >= sizeof(s_bt_device_mac[i])) n = sizeof(s_bt_device_mac[i]) - 1;
+            memcpy(s_bt_device_mac[i], d->mac, n);
+            s_bt_device_mac[i][n] = 0;
+
+            bool same_peer = bt->peer_mac[0] && !strcmp(bt->peer_mac, d->mac);
+            bool connected = bt->slc_connected && same_peer;
+            bool connecting = bt->connecting && same_peer;
+            bool paired = bt->paired && same_peer;
+            lv_label_set_text(s_bt_device_btn_label[i],
+                              connected ? "CONECTADO" :
+                              (connecting ? "CONECTANDO..." :
+                               (paired ? "CONECTAR" : "PAIR / CONECTAR")));
+            if (connected || connecting) lv_obj_clear_flag(s_bt_device_btn[i], LV_OBJ_FLAG_CLICKABLE);
+            else lv_obj_add_flag(s_bt_device_btn[i], LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(s_bt_device_row[i], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            s_bt_device_mac[i][0] = 0;
+            lv_obj_add_flag(s_bt_device_row[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
+    bsp_display_unlock();
+}
+
+void korvo_hmi_update_gateway_status(const char *room,
+                                     const char *gateway_name,
+                                     bool gateway_ok,
+                                     bool control_ok,
+                                     bool sip_registered,
+                                     const char *sip_state,
+                                     bool bt_enabled,
+                                     bool bt_paired,
+                                     bool bt_connected,
+                                     const char *bt_peer)
+{
+    if (s_gateway_footer == NULL) {
+        return;
+    }
+
+    char text[320];
+    const char *gw = (gateway_name && gateway_name[0]) ? gateway_name : "--";
+    const char *rm = (room && room[0]) ? room : "--";
+    const char *sip = (sip_state && sip_state[0]) ? sip_state : "---";
+    const char *bt = !bt_enabled ? "OFF" : (bt_connected ? "CON" : (bt_paired ? "PAIR" : "ON"));
+    const char *peer = (bt_peer && bt_peer[0]) ? bt_peer : "";
+
+    if (bt_paired && peer[0]) {
+        snprintf(text, sizeof(text),
+                 "%.31s · %.31s | GW %s | CTRL %s | SIP %s%.15s | BT %s:%.12s",
+                 rm, gw,
+                 gateway_ok ? "OK" : "---",
+                 control_ok ? "OK" : "BLOCK",
+                 sip_registered ? "REG/" : "", sip,
+                 bt, peer);
+    } else {
+        snprintf(text, sizeof(text),
+                 "%.31s · %.31s | GW %s | CTRL %s | SIP %s%.15s | BT %s",
+                 rm, gw,
+                 gateway_ok ? "OK" : "---",
+                 control_ok ? "OK" : "BLOCK",
+                 sip_registered ? "REG/" : "", sip,
+                 bt);
+    }
+
+    bsp_display_lock(0);
+    lv_label_set_text(s_gateway_footer, text);
+    lv_obj_set_style_text_color(
+        s_gateway_footer,
+        control_ok ? lv_palette_main(LV_PALETTE_GREEN) :
+        (gateway_ok ? lv_palette_main(LV_PALETTE_ORANGE) : lv_color_white()),
+        0);
+    if (!s_bt_panel_visible) lv_obj_move_foreground(s_gateway_footer);
+    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
     bsp_display_unlock();
 }
 

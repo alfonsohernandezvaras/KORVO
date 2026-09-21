@@ -1,0 +1,20 @@
+KORVO1 V1.1.2 - ESP-IDF 6.1 / Mbed TLS 4 PSA HMAC fix
+
+Build error fixed:
+  implicit declaration of function mbedtls_md_hmac
+
+Cause:
+  ESP-IDF 6.x uses Mbed TLS 4.x and legacy mbedtls_md_* crypto APIs are no longer
+  the supported application interface.
+
+Change:
+  - main/korvo_gateway.c now uses PSA Crypto (psa_import_key + psa_mac_compute)
+    for HMAC-SHA256 of nonce|pair_id.
+  - Pair Key remains the enrollment key stored in NVS; no eFuse/HMAC peripheral key
+    is required.
+  - Project version bumped to 1.1.2.
+
+Previous fixes retained:
+  - espressif/cjson dependency for ESP-IDF 6.1
+  - LVGL deprecated assert-handler warning compatibility option
+  - Gateway V2.4 enrollment/WebSocket integration

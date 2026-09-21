@@ -6,3 +6,7 @@ dependencies:
     override_path: ../../../components/bsp_selector
   espressif/esp-dl: '*'
   espressif/human_face_detect: '*'
+  espressif/esp_websocket_client:
+    version: '^1.8.0'
+  espressif/cjson:
+    version: '^1.7.19'
