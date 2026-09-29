@@ -8,8 +8,8 @@
 extern "C" {
 #endif
 
-#define KORVO_WIFI_DEFAULT_SSID          "KORVO ROUTER"
-#define KORVO_WIFI_DEFAULT_PASSWORD      "Sill123123"
+#define KORVO_WIFI_DEFAULT_SSID          "korvo_wifi"
+#define KORVO_WIFI_DEFAULT_PASSWORD      "korvo_gateway"
 
 #define KORVO_WIFI_DEFAULT_IP            "192.168.10.50"
 #define KORVO_WIFI_DEFAULT_NETMASK       "255.255.255.0"

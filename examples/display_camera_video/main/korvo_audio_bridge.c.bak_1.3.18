@@ -363,18 +363,22 @@ static void apply_output_gain(uint8_t *buf, size_t bytes)
 uint32_t korvo_audio_hfp_speaker_tx(uint8_t *buf, uint32_t len)
 {
     if (!buf || !len) return 0;
-    memset(buf, 0, len);
 
+    /* Web alarm/test audio has priority and works with SIP idle. */
     if (s_alarm_pcm && xStreamBufferBytesAvailable(s_alarm_pcm) > 0) {
         size_t n = xStreamBufferReceive(s_alarm_pcm, buf, len, 0);
-        if (n) apply_output_gain(buf, n);
-        if (n < len) { lock(); s_status.sco_underruns++; unlock(); }
-        return len;
+        if (n) {
+            apply_output_gain(buf, n);
+            return (uint32_t)n;
+        }
     }
 
-    if (!s_running || !s_speaker_pcm) return len;
+    if (!s_running || !s_speaker_pcm) return 0;
+    if (xStreamBufferBytesAvailable(s_speaker_pcm) < len) {
+        lock(); s_status.sco_underruns++; unlock();
+        return 0;
+    }
     size_t n = xStreamBufferReceive(s_speaker_pcm, buf, len, 0);
     if (n) apply_output_gain(buf, n);
-    if (n < len) { lock(); s_status.sco_underruns++; unlock(); }
-    return len;
+    return (uint32_t)n;
 }

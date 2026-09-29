@@ -529,7 +529,7 @@ void korvo_hmi_init(void)
     lv_obj_add_event_cb(s_gateway_footer, bt_open_cb, LV_EVENT_CLICKED, NULL);
     build_bluetooth_panel(screen);
 
-    /* V1.3.19: visual screensaver removed. Camera/motion/watchdog chain remains untouched. */
+    /* V1.3.18: visual screensaver removed. Camera/motion/watchdog chain remains untouched. */
 
     reset_face_track();
     s_face_state = KORVO_HMI_FACE_NONE;
@@ -539,7 +539,7 @@ void korvo_hmi_init(void)
 
 void korvo_hmi_sleep(void)
 {
-    /* V1.3.19: no visual screensaver. Keep this entry point because motion/camera
+    /* V1.3.18: no visual screensaver. Keep this entry point because motion/camera
      * logic already depends on it; do not disturb the proven camera/watchdog chain. */
     s_awake = false;
 }

@@ -45,7 +45,6 @@ static char s_call_number[KORVO_BT_NUMBER_MAX];
 static bool s_call_incoming;
 static uint8_t s_output_volume = 75;
 static uint8_t s_mic_gain = 75;
-static int64_t s_last_audio_connect_request_us;
 
 #define BT_RECONNECT_INTERVAL_US  (5LL * 1000LL * 1000LL)
 #define BT_RECONNECT_AFTER_AUTH_US (1000LL * 1000LL)
@@ -361,7 +360,6 @@ static void hfp_cb(esp_hf_cb_event_t event, esp_hf_cb_param_t *param)
 
         case ESP_HF_AUDIO_STATE_EVT:
             lock();
-            s_last_audio_connect_request_us = 0;
             s_status.audio_connected = param->audio_stat.state == ESP_HF_AUDIO_STATE_CONNECTED ||
                                        param->audio_stat.state == ESP_HF_AUDIO_STATE_CONNECTED_MSBC;
             copy_text(s_status.codec, sizeof(s_status.codec),
@@ -798,21 +796,9 @@ esp_err_t korvo_bluetooth_forget(void)
 
 esp_err_t korvo_bluetooth_audio_connect(void)
 {
-    const int64_t now = esp_timer_get_time();
-    lock();
-    bool ok = s_status.slc_connected && s_have_peer_bda;
-    bool already = s_status.audio_connected;
-    bool throttled = s_last_audio_connect_request_us > 0 &&
-                     (now - s_last_audio_connect_request_us) < 3000000LL;
-    esp_bd_addr_t bda;
-    if (ok) memcpy(bda, s_peer_bda, ESP_BD_ADDR_LEN);
-    if (ok && !already && !throttled) s_last_audio_connect_request_us = now;
-    unlock();
+    lock(); bool ok = s_status.slc_connected && s_have_peer_bda; esp_bd_addr_t bda; if (ok) memcpy(bda, s_peer_bda, ESP_BD_ADDR_LEN); unlock();
     if (!ok) return ESP_ERR_INVALID_STATE;
-    if (already || throttled) return ESP_OK;
-    esp_err_t e = esp_hf_ag_audio_connect(bda);
-    if (e != ESP_OK) { lock(); s_last_audio_connect_request_us = 0; unlock(); }
-    return e;
+    return esp_hf_ag_audio_connect(bda);
 }
 
 esp_err_t korvo_bluetooth_audio_disconnect(void)

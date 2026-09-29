@@ -636,7 +636,7 @@ static void send_register(sip_runtime_t *rt, bool with_auth)
         "CSeq: %" PRIu32 " REGISTER\r\n"
         "Contact: <sip:%s@%s:%u>\r\n"
         "Expires: %u\r\n"
-        "User-Agent: KORVO/1.3.19\r\n"
+        "User-Agent: KORVO/1.3.18\r\n"
         "%s"
         "Content-Length: 0\r\n\r\n",
         uri, rt->local_ip, (unsigned)cfg.local_port, branch,
@@ -679,7 +679,7 @@ static void send_invite(sip_runtime_t *rt, bool with_auth)
         "CSeq: %" PRIu32 " INVITE\r\n"
         "Contact: <sip:%s@%s:%u>\r\n"
         "Allow: INVITE, ACK, CANCEL, BYE, OPTIONS\r\n"
-        "User-Agent: KORVO/1.3.19\r\n"
+        "User-Agent: KORVO/1.3.18\r\n"
         "%s"
         "Content-Type: application/sdp\r\n"
         "Content-Length: %d\r\n\r\n%s",
@@ -757,7 +757,7 @@ static void send_bye(sip_runtime_t *rt)
         "BYE %s SIP/2.0\r\nVia: SIP/2.0/UDP %s:%u;branch=%s;rport\r\n"
         "Max-Forwards: 70\r\nFrom: \"%s\" <sip:%s@%s>;tag=%s\r\n"
         "To: <%s>%s%s\r\nCall-ID: %s\r\nCSeq: %" PRIu32 " BYE\r\n"
-        "User-Agent: KORVO/1.3.19\r\n%sContent-Length: 0\r\n\r\n",
+        "User-Agent: KORVO/1.3.18\r\n%sContent-Length: 0\r\n\r\n",
         rt->remote_uri, rt->local_ip, (unsigned)cfg.local_port, branch,
         cfg.display_name, cfg.extension, cfg.server, rt->from_tag,
         rt->remote_uri, rt->to_tag[0] ? ";tag=" : "", rt->to_tag,
@@ -782,7 +782,7 @@ static void send_response(sip_runtime_t *rt, int code, const char *reason, bool 
     int n = snprintf(msg, SIP_TX_MAX,
         "SIP/2.0 %d %s\r\nVia: %s\r\nFrom: %s\r\nTo: %s%s\r\n"
         "Call-ID: %s\r\nCSeq: %s\r\nContact: <sip:%s@%s:%u>\r\n"
-        "Allow: INVITE, ACK, CANCEL, BYE, OPTIONS\r\nUser-Agent: KORVO/1.3.19\r\n"
+        "Allow: INVITE, ACK, CANCEL, BYE, OPTIONS\r\nUser-Agent: KORVO/1.3.18\r\n"
         "%sContent-Length: %d\r\n\r\n%s",
         code, reason, rt->last_via, rt->last_from, rt->last_to, tag_part,
         rt->last_call_id, rt->last_cseq,

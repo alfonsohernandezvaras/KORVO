@@ -175,10 +175,7 @@ static void recompute_locked(void)
      * Gateway IP and that Gateway accepted the WebSocket from this KORVO IP. */
     s_status.gateway_ok = s_status.identity_match && s_status.websocket_connected;
     s_status.pair_auth_ok = s_status.websocket_connected;
-    s_status.control_ok = s_status.gateway_ok &&
-                          s_gateway_reported_control &&
-                          s_status.remote_map_ok &&
-                          s_status.remote_map_percent == 100;
+    s_status.control_ok = s_status.gateway_ok && s_gateway_reported_control;
 
     if (!s_status.paired) {
         s_status.state = KORVO_GW_UNCONFIGURED;
@@ -534,21 +531,6 @@ static void parse_gateway_status(cJSON *data)
         reported_control = cJSON_IsTrue(ctrl);
     }
 
-    bool remote_map_ok = false;
-    uint8_t remote_map_percent = 0;
-    uint32_t remote_map_revision = 0;
-    cJSON *gpio_map = cJSON_GetObjectItemCaseSensitive(data, "gpio_map");
-    if (cJSON_IsObject(gpio_map)) {
-        cJSON *ok = cJSON_GetObjectItemCaseSensitive(gpio_map, "ok");
-        cJSON *pct = cJSON_GetObjectItemCaseSensitive(gpio_map, "percent");
-        cJSON *rev = cJSON_GetObjectItemCaseSensitive(gpio_map, "revision");
-        if (cJSON_IsNumber(pct) && pct->valuedouble >= 0 && pct->valuedouble <= 100)
-            remote_map_percent = (uint8_t)pct->valuedouble;
-        if (cJSON_IsNumber(rev) && rev->valuedouble >= 0)
-            remote_map_revision = (uint32_t)rev->valuedouble;
-        remote_map_ok = cJSON_IsTrue(ok) && remote_map_percent == 100;
-    }
-
     cJSON *sip = cJSON_GetObjectItemCaseSensitive(data, "sip");
     if (cJSON_IsObject(sip)) {
         sip_registered = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(sip, "registered"));
@@ -558,9 +540,6 @@ static void parse_gateway_status(cJSON *data)
     lock();
     if (have_observed) s_status.observed_gateway = observed;
     s_gateway_reported_control = reported_control;
-    s_status.remote_map_ok = remote_map_ok;
-    s_status.remote_map_percent = remote_map_percent;
-    s_status.remote_map_revision = remote_map_revision;
     s_status.sip_registered = sip_registered;
     if (sip_state[0]) copy_text(s_status.sip_state, sizeof(s_status.sip_state), sip_state);
     s_status.last_rx_ms = now_ms();

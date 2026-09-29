@@ -67,9 +67,6 @@ typedef struct {
     bool websocket_connected;
     bool pair_auth_ok; /* legacy name: true when IP-authorized WS is live */
     bool gateway_ok;
-    bool remote_map_ok;
-    uint8_t remote_map_percent;
-    uint32_t remote_map_revision;
     bool control_ok;
 
     bool sip_registered;

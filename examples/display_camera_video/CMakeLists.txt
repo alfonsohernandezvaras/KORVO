@@ -13,7 +13,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # Version embebida en esp_app_desc_t.
 # El sistema OTA KORVO utiliza esta versión para validar
 # actualizaciones, reinstalaciones y downgrades.
-set(PROJECT_VER "1.3.18")
+set(PROJECT_VER "1.3.20")
 
 project(display_camera_new)
 

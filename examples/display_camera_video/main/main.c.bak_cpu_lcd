@@ -77,7 +77,7 @@ static uint32_t cam_buff_size = 0;
 static lv_color_format_t lvgl_cam_rgb565_fmt;
 
 /* ===== FACE DETECTION ===== */
-#define FACE_DETECT_EVERY_N_FRAMES 20
+#define FACE_DETECT_EVERY_N_FRAMES 5
 #define CAMERA_START_RETRIES        5
 #define VIDEO_OPEN_RETRIES          10
 
@@ -532,7 +532,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * Use every 3rd video frame to keep callback cost low.
      */
     motion_frame_counter++;
-    if ((motion_frame_counter % 6U) == 0U) {
+    if ((motion_frame_counter % 3U) == 0U) {
         motion_process_rgb565(camera_buf,
                               camera_buf_hes,
                               camera_buf_ves,
@@ -547,7 +547,6 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     if (face_ai_buffer != NULL &&
         face_ai_mutex != NULL &&
         !face_ai_pending &&
-        motion_active &&
         (face_frame_counter % FACE_DETECT_EVERY_N_FRAMES) == 0) {
 
         size_t required = (size_t)camera_buf_hes * camera_buf_ves * 2;
@@ -598,16 +597,11 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     out_buf = cam_buff[camera_buf_index];
 #endif
 
-    /* Decimate only LCD presentation; camera/watchdog keep full stream. */
-    static uint8_t display_divider = 0;
-    if (++display_divider >= 3U) {
-        display_divider = 0;
-        bsp_display_lock(0);
-        lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
-        lv_obj_center(camera_canvas);
-        lv_obj_invalidate(camera_canvas);
-        bsp_display_unlock();
-    }
+    bsp_display_lock(0);
+    lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+    lv_obj_center(camera_canvas);
+    lv_obj_invalidate(camera_canvas);
+    bsp_display_unlock();
 }
 
 

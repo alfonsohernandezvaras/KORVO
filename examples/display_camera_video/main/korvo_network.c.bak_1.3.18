@@ -85,7 +85,7 @@ static bool valid_cfg(const korvo_network_config_t *c)
         valid_ip(c->ip) &&
         valid_ip(c->netmask) &&
         valid_ip(c->network_gateway) &&
-        (!c->dns[0] || valid_ip(c->dns)) &&
+        valid_ip(c->dns) &&
         valid_ip(c->gateway_node_ip);
 }
 
@@ -287,21 +287,35 @@ static esp_err_t configure_static_ip(void)
         return e;
     }
 
-    if (s_cfg.dns[0]) {
-        esp_netif_dns_info_t dns = {0};
-        dns.ip.type = ESP_IPADDR_TYPE_V4;
-        if (esp_netif_str_to_ip4(s_cfg.dns, &dns.ip.u_addr.ip4) != ESP_OK) return ESP_ERR_INVALID_ARG;
-        e = esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_MAIN, &dns);
-        if (e != ESP_OK) return e;
+    esp_netif_dns_info_t dns = {0};
+
+    dns.ip.type =
+        ESP_IPADDR_TYPE_V4;
+
+    if (esp_netif_str_to_ip4(
+            s_cfg.dns,
+            &dns.ip.u_addr.ip4) != ESP_OK) {
+
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    e =
+        esp_netif_set_dns_info(
+            s_sta_netif,
+            ESP_NETIF_DNS_MAIN,
+            &dns);
+
+    if (e != ESP_OK) {
+        return e;
     }
 
     ESP_LOGI(
         TAG,
-        "IP fija KORVO: %s/%s gateway-lan=%s dns=%s",
+        "IP fija KORVO: %s/%s gateway=%s dns=%s",
         s_cfg.ip,
         s_cfg.netmask,
         s_cfg.network_gateway,
-        s_cfg.dns[0] ? s_cfg.dns : "DISABLED");
+        s_cfg.dns);
 
     return ESP_OK;
 }
@@ -438,7 +452,7 @@ esp_err_t korvo_network_init(void)
 
     ESP_LOGI(
         TAG,
-        "STA READY ssid=%s ip=%s gateway-lan=%s gateway-io=%s",
+        "STA READY ssid=%s ip=%s gateway=%s gateway-node=%s",
         s_cfg.ssid,
         s_cfg.ip,
         s_cfg.network_gateway,
