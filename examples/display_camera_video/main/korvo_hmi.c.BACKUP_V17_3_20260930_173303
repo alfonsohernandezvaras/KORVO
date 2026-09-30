@@ -22,12 +22,6 @@ static lv_obj_t *s_volume_slider = NULL;
 static lv_obj_t *s_volume_label = NULL;
 static lv_obj_t *s_mic_slider = NULL;
 static lv_obj_t *s_mic_label = NULL;
-static lv_obj_t *s_video_resolution = NULL;
-static lv_obj_t *s_v17_gateway_btn = NULL;
-static lv_obj_t *s_v17_reader_btn = NULL;
-static lv_obj_t *s_v17_door_btn = NULL;
-static lv_obj_t *s_v17_sd_btn = NULL;
-static lv_obj_t *s_v17_bt_btn = NULL;
 static lv_obj_t *s_v17_location=NULL,*s_v17_gateway=NULL,*s_v17_reader=NULL,*s_v17_door=NULL,*s_v17_sd=NULL,*s_v17_bt=NULL;
 static uint32_t s_v17_reader_until=0,s_v17_door_until=0;
 
@@ -426,8 +420,8 @@ void korvo_hmi_init(void)
 
     s_guide = lv_obj_create(screen);
     lv_obj_remove_style_all(s_guide);
-    lv_obj_set_size(s_guide, 300, 240); /* V17.4 large ROI */
-    lv_obj_set_pos(s_guide, 342, 110); /* V17.6 horizontal only */ /* V17.4 centered ROI */
+    lv_obj_set_size(s_guide,180,210);
+    lv_obj_align(s_guide, LV_ALIGN_RIGHT_MID, -112, 4); /* V17.2 */
     lv_obj_set_style_border_width(s_guide, 4, 0);
     lv_obj_set_style_border_color(s_guide, lv_color_white(), 0);
     lv_obj_set_style_border_opa(s_guide, LV_OPA_90, 0);
@@ -461,8 +455,7 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_color(s_message, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_message, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(s_message, 8, 0);
-    lv_obj_set_width(s_message, 400);
-    lv_obj_set_pos(s_message, 292, 385); /* V17.6 horizontal only */ /* V17.4 */
+    lv_obj_align(s_message, LV_ALIGN_BOTTOM_RIGHT, -70, -42); /* V17.2 */
 
     /* V17 compact layout */
     s_v17_location=lv_label_create(screen); lv_label_set_text(s_v17_location,"IP: -- | HOST: --");
@@ -480,8 +473,8 @@ void korvo_hmi_init(void)
      * This controls the PCM sent to the HFP/SCO device, so it works for both
      * WAV alarms and SIP receive audio. */
     s_volume_slider = lv_slider_create(screen);
-    lv_obj_set_size(s_volume_slider, 22, 92);
-    lv_obj_align(s_volume_slider, LV_ALIGN_TOP_RIGHT, -24, 270);
+    lv_obj_set_size(s_volume_slider, 24, 178);
+    lv_obj_align(s_volume_slider, LV_ALIGN_RIGHT_MID, -8, 18);
     lv_slider_set_range(s_volume_slider, 0, 100);
     uint8_t initial_volume = korvo_bluetooth_get_output_volume();
     lv_slider_set_value(s_volume_slider, initial_volume, LV_ANIM_OFF);
@@ -503,8 +496,8 @@ void korvo_hmi_init(void)
 
     /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
     s_mic_slider = lv_slider_create(screen);
-    lv_obj_set_size(s_mic_slider, 22, 92);
-    lv_obj_align(s_mic_slider, LV_ALIGN_TOP_RIGHT, -24, 115);
+    lv_obj_set_size(s_mic_slider, 24, 178);
+    lv_obj_align(s_mic_slider, LV_ALIGN_LEFT_MID, 8, 18);
     lv_slider_set_range(s_mic_slider, 0, 100);
     uint8_t initial_mic = korvo_bluetooth_get_mic_gain();
     lv_slider_set_value(s_mic_slider, initial_mic, LV_ANIM_OFF);
@@ -531,18 +524,6 @@ build_bluetooth_panel(screen);
     s_face_state = KORVO_HMI_FACE_NONE;
 
     ESP_LOGI(TAG, "Access HMI initialized");
-}
-
-void korvo_hmi_update_video_resolution(uint16_t width, uint16_t height)
-{
-    if (!s_video_resolution) return;
-    char text[32];
-    snprintf(text, sizeof(text), "%ux%u", (unsigned)width, (unsigned)height);
-    bsp_display_lock(0);
-    lv_label_set_text(s_video_resolution, text);
-    if (!s_bt_panel_visible) lv_obj_move_foreground(s_video_resolution);
-    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
-    bsp_display_unlock();
 }
 
 void korvo_hmi_sleep(void)
@@ -619,10 +600,29 @@ void korvo_hmi_track_face(const face_detection_t *face,
      * Map them to the LCD canvas. The current project uses rotation=0 in
      * normal operation; this mapping follows the aspect-fit dimensions.
      */
-    const int video_w = 400;
-    const int video_h = 300;
-    const int video_x = 292;
-    const int video_y = 80;
+    int display_w = BSP_LCD_H_RES;
+    int display_h = BSP_LCD_V_RES;
+
+    float camera_aspect = (float)camera_width / (float)camera_height;
+    float display_aspect = (float)display_w / (float)display_h;
+
+    int video_w;
+    int video_h;
+    int video_x;
+    int video_y;
+
+    if (camera_aspect > display_aspect) {
+        video_w = display_w;
+        video_h = (int)((float)display_w / camera_aspect);
+        video_x = 0;
+        video_y = (display_h - video_h) / 2;
+    } else {
+        video_h = display_h;
+        video_w = (int)((float)display_h * camera_aspect);
+        video_x = (display_w - video_w) / 2;
+        video_y = 0;
+    }
+
     int sx1 = video_x + (x1 * video_w) / camera_width;
     int sy1 = video_y + (y1 * video_h) / camera_height;
     int sx2 = video_x + (x2 * video_w) / camera_width;
@@ -826,15 +826,59 @@ void korvo_hmi_update_storage(bool sd_ok,
                               uint64_t used_bytes,
                               uint64_t free_bytes)
 {
-    (void)used_bytes; (void)free_bytes;
-    if (!s_v17_sd_btn) return;
+    if(s_v17_sd) v17_color(s_v17_sd,(storage_state==2||storage_state==3)?0x0066CC:0x202830);
+    if (s_storage_diag == NULL) return;
+
+    char text[224];
+
+    /* korvo_storage_state_t: ERROR=0 READY=1 INITIALIZING=2 REPAIRING=3 FOREIGN=4 */
+    if (storage_state == 4) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "ESTRUCTURA: AJENA\n"
+                 "TARJETA NO APTA\n"
+                 "PARA INICIALIZAR");
+    } else if (storage_state == 2) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "INICIALIZANDO ESTRUCTURA...");
+    } else if (storage_state == 3) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "CORRIGIENDO ESTRUCTURA...");
+    } else if (sd_ok && fs_ok) {
+        const double gib = 1024.0 * 1024.0 * 1024.0;
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: FAT32 OK\n"
+                 "ESTRUCTURA: %s\n"
+                 "USO: %.1f GB\n"
+                 "LIBRE: %.1f GB",
+                 structure_ok ? "OK" : "ERROR",
+                 (double)used_bytes / gib,
+                 (double)free_bytes / gib);
+    } else if (sd_ok) {
+        snprintf(text, sizeof(text),
+                 "SD CARD: OK\n"
+                 "FS: ERROR\n"
+                 "ESTRUCTURA: --\n"
+                 "USO: --\n"
+                 "LIBRE: --");
+    } else {
+        snprintf(text, sizeof(text),
+                 "SD CARD: ERROR\n"
+                 "FS: --\n"
+                 "ESTRUCTURA: --\n"
+                 "USO: --\n"
+                 "LIBRE: --");
+    }
+
     bsp_display_lock(0);
-    lv_obj_set_style_bg_color(s_v17_sd_btn,
-        (sd_ok && fs_ok && structure_ok && storage_state == 1)
-        ? lv_palette_darken(LV_PALETTE_BLUE, 2)
-        : ((storage_state == 2 || storage_state == 3)
-           ? lv_palette_main(LV_PALETTE_ORANGE) : lv_color_hex(0x26313B)), 0);
-    if (!s_bt_panel_visible) lv_obj_move_foreground(s_v17_sd_btn);
+    lv_label_set_text(s_storage_diag, text);
+    if (!s_bt_panel_visible) lv_obj_move_foreground(s_storage_diag);
     if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
     bsp_display_unlock();
 }

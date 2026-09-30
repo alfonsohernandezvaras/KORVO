@@ -1,0 +1,1840 @@
+KORVO CAMERA PIPELINE SCAN
+Generated: 2026-09-30T18:43:44.189077
+================================================================================
+
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 43
+MATCH: camera_canvas
+   41: #endif
+   42: static size_t data_cache_line_size = 0;
+   43: static lv_obj_t *camera_canvas = NULL;
+   44: static uint8_t *cam_buff[NUM_BUFS];
+   45: static uint32_t cam_buff_size = 0;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 44
+MATCH: cam_buff
+   42: static size_t data_cache_line_size = 0;
+   43: static lv_obj_t *camera_canvas = NULL;
+   44: static uint8_t *cam_buff[NUM_BUFS];
+   45: static uint32_t cam_buff_size = 0;
+   46: static lv_color_format_t lvgl_cam_rgb565_fmt;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 45
+MATCH: cam_buff
+   43: static lv_obj_t *camera_canvas = NULL;
+   44: static uint8_t *cam_buff[NUM_BUFS];
+   45: static uint32_t cam_buff_size = 0;
+   46: static lv_color_format_t lvgl_cam_rgb565_fmt;
+   47: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 74
+MATCH: app_image_process_scale_crop
+   72: }
+   73: 
+   74: static esp_err_t app_image_process_scale_crop(
+   75:     uint8_t *in_buf, uint32_t in_width, uint32_t in_height,
+   76:     uint8_t *out_buf, uint32_t out_width, uint32_t out_height, size_t out_buf_size,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 76
+MATCH: out_w
+   74: static esp_err_t app_image_process_scale_crop(
+   75:     uint8_t *in_buf, uint32_t in_width, uint32_t in_height,
+   76:     uint8_t *out_buf, uint32_t out_width, uint32_t out_height, size_t out_buf_size,
+   77:     ppa_srm_rotation_angle_t rotation_angle)
+   78: {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 79
+MATCH: out_w
+   77:     ppa_srm_rotation_angle_t rotation_angle)
+   78: {
+   79:     float scale_x = (float)out_width / in_width;
+   80:     float scale_y = (float)out_height / in_height;
+   81: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 80
+MATCH: out_h
+   78: {
+   79:     float scale_x = (float)out_width / in_width;
+   80:     float scale_y = (float)out_height / in_height;
+   81: 
+   82:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 83
+MATCH: out_h
+   81: 
+   82:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+   83:         scale_x = (float)out_height / in_width;
+   84:         scale_y = (float)out_width / in_height;
+   85:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 84
+MATCH: out_w
+   82:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+   83:         scale_x = (float)out_height / in_width;
+   84:         scale_y = (float)out_width / in_height;
+   85:     }
+   86: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 98
+MATCH: out_w
+   96:         .out.buffer = out_buf,
+   97:         .out.buffer_size = out_buf_size,
+   98:         .out.pic_w = out_width,
+   99:         .out.pic_h = out_height,
+  100:         .out.block_offset_x = 0,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 99
+MATCH: out_h
+   97:         .out.buffer_size = out_buf_size,
+   98:         .out.pic_w = out_width,
+   99:         .out.pic_h = out_height,
+  100:         .out.block_offset_x = 0,
+  101:         .out.block_offset_y = 0,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 114
+MATCH: calc_aspect_fit
+  112: }
+  113: 
+  114: static void calc_aspect_fit(
+  115:     uint32_t src_w, uint32_t src_h,
+  116:     uint32_t dst_w, uint32_t dst_h,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 117
+MATCH: out_w
+  115:     uint32_t src_w, uint32_t src_h,
+  116:     uint32_t dst_w, uint32_t dst_h,
+  117:     uint32_t *out_w, uint32_t *out_h)
+  118: {
+  119:     float src_aspect = (float)src_w / src_h;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 123
+MATCH: out_w
+  121: 
+  122:     if (src_aspect > dst_aspect) {
+  123:         *out_w = dst_w;
+  124:         *out_h = dst_w / src_aspect;
+  125:     } else {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 124
+MATCH: out_h
+  122:     if (src_aspect > dst_aspect) {
+  123:         *out_w = dst_w;
+  124:         *out_h = dst_w / src_aspect;
+  125:     } else {
+  126:         *out_h = dst_h;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 126
+MATCH: out_h
+  124:         *out_h = dst_w / src_aspect;
+  125:     } else {
+  126:         *out_h = dst_h;
+  127:         *out_w = dst_h * src_aspect;
+  128:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 127
+MATCH: out_w
+  125:     } else {
+  126:         *out_h = dst_h;
+  127:         *out_w = dst_h * src_aspect;
+  128:     }
+  129: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 131
+MATCH: camera_buf_hes
+  129: }
+  130: #endif
+  131: static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+  132:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  133: {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 132
+MATCH: camera_buf_ves
+  130: #endif
+  131: static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+  132:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  133: {
+  134:     uint32_t out_w = camera_buf_hes;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 134
+MATCH: out_w
+  132:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  133: {
+  134:     uint32_t out_w = camera_buf_hes;
+  135:     uint32_t out_h = camera_buf_ves ;
+  136:     uint8_t *out_buf = camera_buf;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 135
+MATCH: out_h
+  133: {
+  134:     uint32_t out_w = camera_buf_hes;
+  135:     uint32_t out_h = camera_buf_ves ;
+  136:     uint8_t *out_buf = camera_buf;
+  137: #if SOC_PPA_SUPPORTED
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 136
+MATCH: camera_buf
+  134:     uint32_t out_w = camera_buf_hes;
+  135:     uint32_t out_h = camera_buf_ves ;
+  136:     uint8_t *out_buf = camera_buf;
+  137: #if SOC_PPA_SUPPORTED
+  138:     ppa_srm_rotation_angle_t rotation = PPA_SRM_ROTATION_ANGLE_0;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 157
+MATCH: calc_aspect_fit
+  155:     /* Get size of camera for screen (by aspect ratio)  */
+  156:     if (BSP_CAMERA_ROTATION == 90 || BSP_CAMERA_ROTATION == 270) {
+  157:         calc_aspect_fit(camera_buf_ves, camera_buf_hes, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+  158:     } else {
+  159:         calc_aspect_fit(camera_buf_hes, camera_buf_ves, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 159
+MATCH: calc_aspect_fit
+  157:         calc_aspect_fit(camera_buf_ves, camera_buf_hes, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+  158:     } else {
+  159:         calc_aspect_fit(camera_buf_hes, camera_buf_ves, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+  160:     }
+  161: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 163
+MATCH: app_image_process_scale_crop
+  161: 
+  162:     /* Scale camera picture for the screen + rotation */
+  163:     app_image_process_scale_crop(
+  164:         camera_buf, camera_buf_hes, camera_buf_ves,
+  165:         cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 164
+MATCH: camera_buf_hes
+  162:     /* Scale camera picture for the screen + rotation */
+  163:     app_image_process_scale_crop(
+  164:         camera_buf, camera_buf_hes, camera_buf_ves,
+  165:         cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+  166:         rotation
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 165
+MATCH: cam_buff
+  163:     app_image_process_scale_crop(
+  164:         camera_buf, camera_buf_hes, camera_buf_ves,
+  165:         cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+  166:         rotation
+  167:     );
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 168
+MATCH: cam_buff
+  166:         rotation
+  167:     );
+  168:     out_buf = cam_buff[camera_buf_index];
+  169: #endif
+  170: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 172
+MATCH: lv_canvas_set_buffer
+  170: 
+  171:     bsp_display_lock(0);
+  172:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  173:     lv_obj_center(camera_canvas);
+  174:     lv_obj_invalidate(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 173
+MATCH: camera_canvas
+  171:     bsp_display_lock(0);
+  172:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  173:     lv_obj_center(camera_canvas);
+  174:     lv_obj_invalidate(camera_canvas);
+  175:     bsp_display_unlock();
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 174
+MATCH: camera_canvas
+  172:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  173:     lv_obj_center(camera_canvas);
+  174:     lv_obj_invalidate(camera_canvas);
+  175:     bsp_display_unlock();
+  176: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 201
+MATCH: cam_buff
+  199: 
+  200:     /* Allocate canvas buffers */
+  201:     cam_buff_size = ALIGN_UP(BSP_LCD_H_RES * BSP_LCD_V_RES * 2, data_cache_line_size);
+  202:     for (int i = 0; i < NUM_BUFS; i++) {
+  203:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 203
+MATCH: cam_buff
+  201:     cam_buff_size = ALIGN_UP(BSP_LCD_H_RES * BSP_LCD_V_RES * 2, data_cache_line_size);
+  202:     for (int i = 0; i < NUM_BUFS; i++) {
+  203:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+  204:         if (cam_buff[i] == NULL) {
+  205:             ESP_LOGE(TAG, "Failed to allocate camera buffer %d", i);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 204
+MATCH: cam_buff
+  202:     for (int i = 0; i < NUM_BUFS; i++) {
+  203:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+  204:         if (cam_buff[i] == NULL) {
+  205:             ESP_LOGE(TAG, "Failed to allocate camera buffer %d", i);
+  206:             return;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 221
+MATCH: lv_canvas
+  219:     /* Create LVGL canvas for camera image */
+  220:     bsp_display_lock(0);
+  221:     camera_canvas = lv_canvas_create(lv_scr_act());
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 222
+MATCH: lv_canvas_set_buffer
+  220:     bsp_display_lock(0);
+  221:     camera_canvas = lv_canvas_create(lv_scr_act());
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+  224:     lv_obj_center(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 223
+MATCH: camera_canvas
+  221:     camera_canvas = lv_canvas_create(lv_scr_act());
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+  224:     lv_obj_center(camera_canvas);
+  225: /* ===== KORVO ACCESS HMI ===== */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main_actual.txt
+LINE: 224
+MATCH: camera_canvas
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+  224:     lv_obj_center(camera_canvas);
+  225: /* ===== KORVO ACCESS HMI ===== */
+  226: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 33
+MATCH: camera_buf
+   31: 
+   32: typedef struct {
+   33:     uint8_t *camera_buffer[MAX_BUFFER_COUNT];
+   34:     size_t camera_buf_size;
+   35:     uint32_t camera_buf_hes;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 34
+MATCH: camera_buf
+   32: typedef struct {
+   33:     uint8_t *camera_buffer[MAX_BUFFER_COUNT];
+   34:     size_t camera_buf_size;
+   35:     uint32_t camera_buf_hes;
+   36:     uint32_t camera_buf_ves;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 35
+MATCH: camera_buf_hes
+   33:     uint8_t *camera_buffer[MAX_BUFFER_COUNT];
+   34:     size_t camera_buf_size;
+   35:     uint32_t camera_buf_hes;
+   36:     uint32_t camera_buf_ves;
+   37:     uint32_t camera_pixelformat;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 36
+MATCH: camera_buf_ves
+   34:     size_t camera_buf_size;
+   35:     uint32_t camera_buf_hes;
+   36:     uint32_t camera_buf_ves;
+   37:     uint32_t camera_pixelformat;
+   38:     struct v4l2_buffer v4l2_buf;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 176
+MATCH: camera_buf_hes
+  174:     }
+  175: 
+  176:     app_camera_video.camera_buf_hes = default_format.fmt.pix.width;
+  177:     app_camera_video.camera_buf_ves = default_format.fmt.pix.height;
+  178:     app_camera_video.camera_pixelformat = default_format.fmt.pix.pixelformat;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 177
+MATCH: camera_buf_ves
+  175: 
+  176:     app_camera_video.camera_buf_hes = default_format.fmt.pix.width;
+  177:     app_camera_video.camera_buf_ves = default_format.fmt.pix.height;
+  178:     app_camera_video.camera_pixelformat = default_format.fmt.pix.pixelformat;
+  179:     ESP_LOGI(TAG, "V08 negotiated capture: %" PRIu32 "x%" PRIu32, app_camera_video.camera_buf_hes, app_camera_video.camera_buf_ves);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 179
+MATCH: camera_buf_hes
+  177:     app_camera_video.camera_buf_ves = default_format.fmt.pix.height;
+  178:     app_camera_video.camera_pixelformat = default_format.fmt.pix.pixelformat;
+  179:     ESP_LOGI(TAG, "V08 negotiated capture: %" PRIu32 "x%" PRIu32, app_camera_video.camera_buf_hes, app_camera_video.camera_buf_ves);
+  180:     log_v4l2_fourcc(app_camera_video.camera_pixelformat, "capture pixel format");
+  181: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 226
+MATCH: camera_buf
+  224: 
+  225:         if (req.memory == V4L2_MEMORY_MMAP) {
+  226:             app_camera_video.camera_buffer[i] = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, video_fd, buf.m.offset);
+  227:             if (app_camera_video.camera_buffer[i] == NULL) {
+  228:                 ESP_LOGE(TAG, "mmap failed");
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 227
+MATCH: camera_buf
+  225:         if (req.memory == V4L2_MEMORY_MMAP) {
+  226:             app_camera_video.camera_buffer[i] = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, video_fd, buf.m.offset);
+  227:             if (app_camera_video.camera_buffer[i] == NULL) {
+  228:                 ESP_LOGE(TAG, "mmap failed");
+  229:                 goto errout_req_bufs;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 237
+MATCH: camera_buf
+  235:             }
+  236:             buf.m.userptr = (unsigned long)fb[i];
+  237:             app_camera_video.camera_buffer[i] = (uint8_t *)fb[i];
+  238:         }
+  239: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 240
+MATCH: camera_buf
+  238:         }
+  239: 
+  240:         app_camera_video.camera_buf_size = buf.length;
+  241: 
+  242:         if (ioctl(video_fd, VIDIOC_QBUF, &buf) != 0) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 266
+MATCH: camera_buf
+  264: 
+  265:     for (int i = 0; i < fb_num; i++) {
+  266:         if (app_camera_video.camera_buffer[i] != NULL) {
+  267:             fb[i] = app_camera_video.camera_buffer[i];
+  268:         } else {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 267
+MATCH: camera_buf
+  265:     for (int i = 0; i < fb_num; i++) {
+  266:         if (app_camera_video.camera_buffer[i] != NULL) {
+  267:             fb[i] = app_camera_video.camera_buffer[i];
+  268:         } else {
+  269:             ESP_LOGE(TAG, "frame buffer is NULL");
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 297
+MATCH: camera_buf
+  295: static inline void video_operation_video_frame(int video_fd)
+  296: {
+  297:     app_camera_video.v4l2_buf.m.userptr = (unsigned long)app_camera_video.camera_buffer[app_camera_video.v4l2_buf.index];
+  298:     app_camera_video.v4l2_buf.length = app_camera_video.camera_buf_size;
+  299: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 298
+MATCH: camera_buf
+  296: {
+  297:     app_camera_video.v4l2_buf.m.userptr = (unsigned long)app_camera_video.camera_buffer[app_camera_video.v4l2_buf.index];
+  298:     app_camera_video.v4l2_buf.length = app_camera_video.camera_buf_size;
+  299: 
+  300:     uint8_t buf_index = app_camera_video.v4l2_buf.index;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 303
+MATCH: camera_buf
+  301: 
+  302:     app_camera_video.user_camera_video_frame_operation_cb(
+  303:         app_camera_video.camera_buffer[buf_index],
+  304:         buf_index,
+  305:         app_camera_video.camera_buf_hes,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 305
+MATCH: camera_buf_hes
+  303:         app_camera_video.camera_buffer[buf_index],
+  304:         buf_index,
+  305:         app_camera_video.camera_buf_hes,
+  306:         app_camera_video.camera_buf_ves,
+  307:         app_camera_video.camera_buf_size
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 306
+MATCH: camera_buf_ves
+  304:         buf_index,
+  305:         app_camera_video.camera_buf_hes,
+  306:         app_camera_video.camera_buf_ves,
+  307:         app_camera_video.camera_buf_size
+  308:     );
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.c
+LINE: 307
+MATCH: camera_buf
+  305:         app_camera_video.camera_buf_hes,
+  306:         app_camera_video.camera_buf_ves,
+  307:         app_camera_video.camera_buf_size
+  308:     );
+  309: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.h
+LINE: 30
+MATCH: camera_buf_hes
+   28: } video_fmt_t;
+   29: 
+   30: typedef void (*app_video_frame_operation_cb_t)(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+   31:         uint32_t camera_buf_ves, size_t camera_buf_len);
+   32: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\app_video.h
+LINE: 31
+MATCH: camera_buf_ves
+   29: 
+   30: typedef void (*app_video_frame_operation_cb_t)(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+   31:         uint32_t camera_buf_ves, size_t camera_buf_len);
+   32: 
+   33: /**
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_alarm.c
+LINE: 43
+MATCH: memcpy
+   41:     size_t n = strlen(text);
+   42:     if (n >= sizeof(s_status.last_error)) n = sizeof(s_status.last_error) - 1;
+   43:     if (n) memcpy(s_status.last_error, text, n);
+   44:     s_status.last_error[n] = '\0';
+   45:     unlock();
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 63
+MATCH: memcpy
+   61:     size_t n = strlen(src);
+   62:     if (n >= len) n = len - 1;
+   63:     if (n) memcpy(dst, src, n);
+   64:     dst[n] = '\0';
+   65: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 231
+MATCH: memcpy
+  229:                 if (p->type == ESP_BT_GAP_DEV_PROP_BDNAME && p->val && p->len > 0) {
+  230:                     size_t n = (size_t)p->len < sizeof(name)-1 ? (size_t)p->len : sizeof(name)-1;
+  231:                     memcpy(name, p->val, n); name[n] = 0;
+  232:                 } else if (p->type == ESP_BT_GAP_DEV_PROP_RSSI && p->val) {
+  233:                     rssi = *(int8_t *)p->val;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 240
+MATCH: memcpy
+  238:                     if (q && n) {
+  239:                         size_t z = n < sizeof(name)-1 ? n : sizeof(name)-1;
+  240:                         memcpy(name, q, z); name[z] = 0;
+  241:                     }
+  242:                 }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 256
+MATCH: memcpy
+  254:             uint8_t n = (uint8_t)strlen(pin);
+  255:             if (!n) { copy_text(pin, sizeof(pin), "0000"); n = 4; }
+  256:             memcpy(pin_code, pin, n);
+  257:             esp_bt_gap_pin_reply(param->pin_req.bda, true, n, pin_code);
+  258:             break;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 314
+MATCH: memcpy
+  312:             mac_to_text(param->conn_stat.remote_bda, mac);
+  313:             lock();
+  314:             memcpy(s_peer_bda, param->conn_stat.remote_bda, ESP_BD_ADDR_LEN);
+  315:             s_have_peer_bda = true;
+  316:             copy_text(s_status.peer_mac, sizeof(s_status.peer_mac), mac);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 494
+MATCH: memcpy
+  492:     esp_bt_pin_code_t pin_code = {0};
+  493:     uint8_t pin_len = (uint8_t)strlen(pin);
+  494:     if (!pin_len) { memcpy(pin_code, "0000", 4); pin_len = 4; }
+  495:     else memcpy(pin_code, pin, pin_len);
+  496:     esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_VARIABLE, pin_len, pin_code);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 495
+MATCH: memcpy
+  493:     uint8_t pin_len = (uint8_t)strlen(pin);
+  494:     if (!pin_len) { memcpy(pin_code, "0000", 4); pin_len = 4; }
+  495:     else memcpy(pin_code, pin, pin_len);
+  496:     esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_VARIABLE, pin_len, pin_code);
+  497: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 735
+MATCH: memcpy
+  733:         return ESP_OK;
+  734:     }
+  735:     memcpy(s_peer_bda, bda, ESP_BD_ADDR_LEN); s_have_peer_bda = true;
+  736:     s_status.paired = same_saved_peer;
+  737:     s_status.connecting = true;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 771
+MATCH: memcpy
+  769:     bool linked = s_status.slc_connected || s_status.connecting;
+  770:     esp_bd_addr_t bda;
+  771:     if (have) memcpy(bda, s_peer_bda, ESP_BD_ADDR_LEN);
+  772:     s_manual_disconnect = true;
+  773:     s_next_reconnect_us = 0;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 808
+MATCH: memcpy
+  806:                      (now - s_last_audio_connect_request_us) < 3000000LL;
+  807:     esp_bd_addr_t bda;
+  808:     if (ok) memcpy(bda, s_peer_bda, ESP_BD_ADDR_LEN);
+  809:     if (ok && !already && !throttled) s_last_audio_connect_request_us = now;
+  810:     unlock();
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 820
+MATCH: memcpy
+  818: esp_err_t korvo_bluetooth_audio_disconnect(void)
+  819: {
+  820:     lock(); bool ok = s_status.audio_connected && s_have_peer_bda; esp_bd_addr_t bda; if (ok) memcpy(bda, s_peer_bda, ESP_BD_ADDR_LEN); unlock();
+  821:     if (!ok) return ESP_OK;
+  822:     return esp_hf_ag_audio_disconnect(bda);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_bluetooth.c
+LINE: 835
+MATCH: memcpy
+  833: static bool peer_for_call(esp_bd_addr_t bda)
+  834: {
+  835:     lock(); bool ok = s_status.slc_connected && s_have_peer_bda; if (ok) memcpy(bda, s_peer_bda, ESP_BD_ADDR_LEN); unlock();
+  836:     return ok;
+  837: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_gateway.c
+LINE: 266
+MATCH: memcpy
+  264:         size_t take = (size_t)evt->data_len < room ? (size_t)evt->data_len : room;
+  265:         if (take) {
+  266:             memcpy(b->buf + b->len, evt->data, take);
+  267:             b->len += take;
+  268:             b->buf[b->len] = '\0';
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_gateway.c
+LINE: 326
+MATCH: memcpy
+  324:     listener_slot_t listeners[GW_LISTENER_MAX] = {0};
+  325:     lock();
+  326:     memcpy(listeners, s_listeners, sizeof(listeners));
+  327:     unlock();
+  328:     for (size_t i = 0; i < GW_LISTENER_MAX; ++i) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_gateway.c
+LINE: 667
+MATCH: memcpy
+  665:             s_rx_expected = (size_t)e->payload_len;
+  666:         }
+  667:         memcpy(s_rx + e->payload_offset, e->data_ptr, (size_t)e->data_len);
+  668:         size_t end = (size_t)e->payload_offset + (size_t)e->data_len;
+  669:         if ((e->fin || end >= s_rx_expected) && end <= s_rx_expected) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 106
+MATCH: lv_obj_set_size
+  104:     lv_obj_t *btn = lv_obj_create(parent);
+  105:     lv_obj_remove_style_all(btn);
+  106:     lv_obj_set_size(btn, width, height);
+  107:     lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_BLUE, 2), 0);
+  108:     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 130
+MATCH: lv_obj_set_size
+  128: 
+  129: static lv_obj_t *v17_make_flag(lv_obj_t *p,const char *txt,int y){
+  130:     lv_obj_t *o=lv_obj_create(p); lv_obj_remove_style_all(o); lv_obj_set_pos(o,18,y); lv_obj_set_size(o,190,46);
+  131:     lv_obj_set_style_bg_color(o,lv_color_hex(0x202830),0); lv_obj_set_style_bg_opa(o,LV_OPA_COVER,0);
+  132:     lv_obj_set_style_border_width(o,1,0); lv_obj_set_style_border_color(o,lv_color_hex(0x506070),0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 275
+MATCH: lv_obj_set_pos
+  273:     s_bt_panel = lv_obj_create(screen);
+  274:     lv_obj_remove_style_all(s_bt_panel);
+  275:     lv_obj_set_pos(s_bt_panel, 0, 0);
+  276:     lv_obj_set_size(s_bt_panel, BSP_LCD_H_RES, BSP_LCD_V_RES);
+  277:     lv_obj_set_style_bg_color(s_bt_panel, lv_color_hex(0x101820), 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 276
+MATCH: lv_obj_set_size
+  274:     lv_obj_remove_style_all(s_bt_panel);
+  275:     lv_obj_set_pos(s_bt_panel, 0, 0);
+  276:     lv_obj_set_size(s_bt_panel, BSP_LCD_H_RES, BSP_LCD_V_RES);
+  277:     lv_obj_set_style_bg_color(s_bt_panel, lv_color_hex(0x101820), 0);
+  278:     lv_obj_set_style_bg_opa(s_bt_panel, LV_OPA_COVER, 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 322
+MATCH: lv_obj_set_pos
+  320: 
+  321:     s_bt_list = lv_obj_create(s_bt_panel);
+  322:     lv_obj_set_pos(s_bt_list, 8, 158);
+  323:     lv_obj_set_size(s_bt_list, BSP_LCD_H_RES - 16, BSP_LCD_V_RES - 166);
+  324:     lv_obj_set_style_bg_color(s_bt_list, lv_color_hex(0x18232e), 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 323
+MATCH: lv_obj_set_size
+  321:     s_bt_list = lv_obj_create(s_bt_panel);
+  322:     lv_obj_set_pos(s_bt_list, 8, 158);
+  323:     lv_obj_set_size(s_bt_list, BSP_LCD_H_RES - 16, BSP_LCD_V_RES - 166);
+  324:     lv_obj_set_style_bg_color(s_bt_list, lv_color_hex(0x18232e), 0);
+  325:     lv_obj_set_style_bg_opa(s_bt_list, LV_OPA_COVER, 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 341
+MATCH: lv_obj_set_pos
+  339:     for (size_t i = 0; i < KORVO_BT_SCAN_MAX; ++i) {
+  340:         lv_obj_t *row = lv_obj_create(s_bt_list);
+  341:         lv_obj_set_pos(row, 0, (int)i * row_h);
+  342:         lv_obj_set_size(row, BSP_LCD_H_RES - 34, row_h - 3);
+  343:         lv_obj_set_style_bg_color(row, lv_color_hex(0x202f3c), 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 342
+MATCH: lv_obj_set_size
+  340:         lv_obj_t *row = lv_obj_create(s_bt_list);
+  341:         lv_obj_set_pos(row, 0, (int)i * row_h);
+  342:         lv_obj_set_size(row, BSP_LCD_H_RES - 34, row_h - 3);
+  343:         lv_obj_set_style_bg_color(row, lv_color_hex(0x202f3c), 0);
+  344:         lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 429
+MATCH: lv_obj_set_size
+  427:     s_guide = lv_obj_create(screen);
+  428:     lv_obj_remove_style_all(s_guide);
+  429:     lv_obj_set_size(s_guide, 300, 240); /* V17.4 large ROI */
+  430:     lv_obj_set_pos(s_guide, 342, 110); /* V17.6 horizontal only */ /* V17.4 centered ROI */
+  431:     lv_obj_set_style_border_width(s_guide, 4, 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 430
+MATCH: lv_obj_set_pos
+  428:     lv_obj_remove_style_all(s_guide);
+  429:     lv_obj_set_size(s_guide, 300, 240); /* V17.4 large ROI */
+  430:     lv_obj_set_pos(s_guide, 342, 110); /* V17.6 horizontal only */ /* V17.4 centered ROI */
+  431:     lv_obj_set_style_border_width(s_guide, 4, 0);
+  432:     lv_obj_set_style_border_color(s_guide, lv_color_white(), 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 451
+MATCH: lv_obj_set_size
+  449:     s_face_center = lv_obj_create(screen);
+  450:     lv_obj_remove_style_all(s_face_center);
+  451:     lv_obj_set_size(s_face_center, 8, 8);
+  452:     lv_obj_set_style_radius(s_face_center, LV_RADIUS_CIRCLE, 0);
+  453:     lv_obj_set_style_bg_color(s_face_center, lv_color_white(), 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 465
+MATCH: lv_obj_set_pos
+  463:     lv_obj_set_style_pad_all(s_message, 8, 0);
+  464:     lv_obj_set_width(s_message, 400);
+  465:     lv_obj_set_pos(s_message, 292, 385); /* V17.6 horizontal only */ /* V17.4 */
+  466: 
+  467:     /* V17 compact layout */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 483
+MATCH: lv_obj_set_size
+  481:      * WAV alarms and SIP receive audio. */
+  482:     s_volume_slider = lv_slider_create(screen);
+  483:     lv_obj_set_size(s_volume_slider, 22, 92);
+  484:     lv_obj_align(s_volume_slider, LV_ALIGN_TOP_RIGHT, -24, 270);
+  485:     lv_slider_set_range(s_volume_slider, 0, 100);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 506
+MATCH: lv_obj_set_size
+  504:     /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
+  505:     s_mic_slider = lv_slider_create(screen);
+  506:     lv_obj_set_size(s_mic_slider, 22, 92);
+  507:     lv_obj_align(s_mic_slider, LV_ALIGN_TOP_RIGHT, -24, 115);
+  508:     lv_slider_set_range(s_mic_slider, 0, 100);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 638
+MATCH: lv_obj_set_pos
+  636:     bsp_display_lock(0);
+  637: 
+  638:     lv_obj_set_pos(s_face_box, sx1, sy1);
+  639:     lv_obj_set_size(s_face_box, box_w, box_h);
+  640:     lv_obj_clear_flag(s_face_box, LV_OBJ_FLAG_HIDDEN);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 639
+MATCH: lv_obj_set_size
+  637: 
+  638:     lv_obj_set_pos(s_face_box, sx1, sy1);
+  639:     lv_obj_set_size(s_face_box, box_w, box_h);
+  640:     lv_obj_clear_flag(s_face_box, LV_OBJ_FLAG_HIDDEN);
+  641: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 642
+MATCH: lv_obj_set_pos
+  640:     lv_obj_clear_flag(s_face_box, LV_OBJ_FLAG_HIDDEN);
+  641: 
+  642:     lv_obj_set_pos(s_face_center, center_x - 4, center_y - 4);
+  643:     lv_obj_clear_flag(s_face_center, LV_OBJ_FLAG_HIDDEN);
+  644: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_hmi.c
+LINE: 917
+MATCH: memcpy
+  915:             size_t n = strlen(d->mac);
+  916:             if (n >= sizeof(s_bt_device_mac[i])) n = sizeof(s_bt_device_mac[i]) - 1;
+  917:             memcpy(s_bt_device_mac[i], d->mac, n);
+  918:             s_bt_device_mac[i][n] = 0;
+  919: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 175
+MATCH: memcpy
+  173:     size_t n = strlen(src);
+  174:     if (n >= len) n = len - 1;
+  175:     if (n) memcpy(dst, src, n);
+  176:     dst[n] = '\0';
+  177: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 271
+MATCH: memcpy
+  269:     lock();
+  270:     st = s_status;
+  271:     memcpy(slots, s_listeners, sizeof(slots));
+  272:     unlock();
+  273:     for (size_t i = 0; i < SIP_LISTENER_MAX; ++i) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 364
+MATCH: memcpy
+  362:             size_t n = (size_t)(e - v);
+  363:             if (n >= out_len) n = out_len - 1;
+  364:             memcpy(out, v, n);
+  365:             out[n] = 0;
+  366:             return true;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 389
+MATCH: memcpy
+  387:     size_t n = (size_t)(e - p);
+  388:     if (n >= out_len) n = out_len - 1;
+  389:     memcpy(out, p, n); out[n] = 0;
+  390: }
+  391: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 454
+MATCH: memcpy
+  452:         return ESP_ERR_NOT_FOUND;
+  453:     }
+  454:     memcpy(&rt->server_addr, res->ai_addr, sizeof(rt->server_addr));
+  455:     freeaddrinfo(res);
+  456:     rt->server_valid = true;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 505
+MATCH: memcpy
+  503:         ++s;
+  504:         size_t n = (size_t)(e - s);
+  505:         if (uri && uri_len) { if (n >= uri_len) n = uri_len - 1; memcpy(uri, s, n); uri[n] = 0; }
+  506:     } else {
+  507:         s = ci_strstr(header, "sip:");
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 512
+MATCH: memcpy
+  510:             while (*e && *e != ';' && *e != ' ' && *e != '\r' && *e != '\n') ++e;
+  511:             size_t n = (size_t)(e - s); if (n >= uri_len) n = uri_len - 1;
+  512:             memcpy(uri, s, n); uri[n] = 0;
+  513:         }
+  514:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 519
+MATCH: memcpy
+  517:         u += 4; const char *at = strchr(u, '@');
+  518:         size_t n = at ? (size_t)(at - u) : strlen(u);
+  519:         if (number && number_len) { if (n >= number_len) n = number_len - 1; memcpy(number, u, n); number[n] = 0; }
+  520:     }
+  521: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 531
+MATCH: memcpy
+  529:     size_t room = dst_len - 1 - used;
+  530:     if (n > room) n = room;
+  531:     if (n) memcpy(dst + used, src, n);
+  532:     dst[used + n] = '\0';
+  533: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_sip.c
+LINE: 842
+MATCH: memcpy
+  840:     while (*e && *e != ';' && *e != ' ' && *e != '\r' && *e != '\n') ++e;
+  841:     size_t n = (size_t)(e - p); if (n >= len) n = len - 1;
+  842:     memcpy(tag, p, n); tag[n] = 0;
+  843: }
+  844: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\korvo_web.c
+LINE: 197
+MATCH: memcpy
+  195:             }
+  196: 
+  197:             memcpy(
+  198:                 x,
+  199:                 p,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 73
+MATCH: camera_canvas
+   71: #endif
+   72: static size_t data_cache_line_size = 0;
+   73: static lv_obj_t *camera_canvas = NULL;
+   74: static uint8_t *cam_buff[NUM_BUFS];
+   75: static uint32_t cam_buff_size = 0;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 74
+MATCH: cam_buff
+   72: static size_t data_cache_line_size = 0;
+   73: static lv_obj_t *camera_canvas = NULL;
+   74: static uint8_t *cam_buff[NUM_BUFS];
+   75: static uint32_t cam_buff_size = 0;
+   76: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 75
+MATCH: cam_buff
+   73: static lv_obj_t *camera_canvas = NULL;
+   74: static uint8_t *cam_buff[NUM_BUFS];
+   75: static uint32_t cam_buff_size = 0;
+   76: 
+   77: static lv_color_format_t lvgl_cam_rgb565_fmt;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 173
+MATCH: app_image_process_scale_crop
+  171: }
+  172: 
+  173: static esp_err_t app_image_process_scale_crop(
+  174:     uint8_t *in_buf, uint32_t in_width, uint32_t in_height,
+  175:     uint8_t *out_buf, uint32_t out_width, uint32_t out_height, size_t out_buf_size,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 175
+MATCH: out_w
+  173: static esp_err_t app_image_process_scale_crop(
+  174:     uint8_t *in_buf, uint32_t in_width, uint32_t in_height,
+  175:     uint8_t *out_buf, uint32_t out_width, uint32_t out_height, size_t out_buf_size,
+  176:     ppa_srm_rotation_angle_t rotation_angle)
+  177: {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 178
+MATCH: out_w
+  176:     ppa_srm_rotation_angle_t rotation_angle)
+  177: {
+  178:     float scale_x = (float)out_width / in_width;
+  179:     float scale_y = (float)out_height / in_height;
+  180: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 179
+MATCH: out_h
+  177: {
+  178:     float scale_x = (float)out_width / in_width;
+  179:     float scale_y = (float)out_height / in_height;
+  180: 
+  181:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 182
+MATCH: out_h
+  180: 
+  181:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+  182:         scale_x = (float)out_height / in_width;
+  183:         scale_y = (float)out_width / in_height;
+  184:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 183
+MATCH: out_w
+  181:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+  182:         scale_x = (float)out_height / in_width;
+  183:         scale_y = (float)out_width / in_height;
+  184:     }
+  185: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 197
+MATCH: out_w
+  195:         .out.buffer = out_buf,
+  196:         .out.buffer_size = out_buf_size,
+  197:         .out.pic_w = out_width,
+  198:         .out.pic_h = out_height,
+  199:         .out.block_offset_x = 0,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 198
+MATCH: out_h
+  196:         .out.buffer_size = out_buf_size,
+  197:         .out.pic_w = out_width,
+  198:         .out.pic_h = out_height,
+  199:         .out.block_offset_x = 0,
+  200:         .out.block_offset_y = 0,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 213
+MATCH: calc_aspect_fit
+  211: }
+  212: 
+  213: static void calc_aspect_fit(
+  214:     uint32_t src_w, uint32_t src_h,
+  215:     uint32_t dst_w, uint32_t dst_h,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 216
+MATCH: out_w
+  214:     uint32_t src_w, uint32_t src_h,
+  215:     uint32_t dst_w, uint32_t dst_h,
+  216:     uint32_t *out_w, uint32_t *out_h)
+  217: {
+  218:     float src_aspect = (float)src_w / src_h;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 222
+MATCH: out_w
+  220: 
+  221:     if (src_aspect > dst_aspect) {
+  222:         *out_w = dst_w;
+  223:         *out_h = dst_w / src_aspect;
+  224:     } else {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 223
+MATCH: out_h
+  221:     if (src_aspect > dst_aspect) {
+  222:         *out_w = dst_w;
+  223:         *out_h = dst_w / src_aspect;
+  224:     } else {
+  225:         *out_h = dst_h;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 225
+MATCH: out_h
+  223:         *out_h = dst_w / src_aspect;
+  224:     } else {
+  225:         *out_h = dst_h;
+  226:         *out_w = dst_h * src_aspect;
+  227:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 226
+MATCH: out_w
+  224:     } else {
+  225:         *out_h = dst_h;
+  226:         *out_w = dst_h * src_aspect;
+  227:     }
+  228: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 231
+MATCH: camera_buf
+  229: #endif
+  230: 
+  231: static void motion_process_rgb565(const uint8_t *camera_buf,
+  232:                                   uint32_t width,
+  233:                                   uint32_t height,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 234
+MATCH: camera_buf
+  232:                                   uint32_t width,
+  233:                                   uint32_t height,
+  234:                                   size_t camera_buf_len)
+  235: {
+  236:     /* Camera health runs during boot, but HMI/screensaver effects do not. */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 237
+MATCH: camera_buf
+  235: {
+  236:     /* Camera health runs during boot, but HMI/screensaver effects do not. */
+  237:     if (camera_buf == NULL || width == 0 || height == 0) {
+  238:         return;
+  239:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 242
+MATCH: camera_buf
+  240: 
+  241:     size_t pixels = (size_t)width * height;
+  242:     if (camera_buf_len < pixels * 2U) {
+  243:         return;
+  244:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 246
+MATCH: camera_buf
+  244:     }
+  245: 
+  246:     const uint16_t *src = (const uint16_t *)camera_buf;
+  247: 
+  248:     size_t samples_x = (width + MOTION_SAMPLE_STEP_PIXELS - 1) /
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 515
+MATCH: camera_buf_hes
+  513: }
+  514: 
+  515: static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+  516:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  517: {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 516
+MATCH: camera_buf_ves
+  514: 
+  515: static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+  516:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  517: {
+  518:     /* Runtime camera watchdog heartbeat: a real callback means the camera/video
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 520
+MATCH: camera_buf
+  518:     /* Runtime camera watchdog heartbeat: a real callback means the camera/video
+  519:      * path is alive. Do not tie the watchdog to the heavier motion algorithm. */
+  520:     if (camera_buf != NULL && camera_buf_len > 0) {
+  521:         camera_last_valid_frame_tick = xTaskGetTickCount();
+  522:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 524
+MATCH: out_w
+  522:     }
+  523: 
+  524:     uint32_t out_w = camera_buf_hes;
+  525:     uint32_t out_h = camera_buf_ves ;
+  526:     uint8_t *out_buf = camera_buf;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 525
+MATCH: out_h
+  523: 
+  524:     uint32_t out_w = camera_buf_hes;
+  525:     uint32_t out_h = camera_buf_ves ;
+  526:     uint8_t *out_buf = camera_buf;
+  527: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 526
+MATCH: camera_buf
+  524:     uint32_t out_w = camera_buf_hes;
+  525:     uint32_t out_h = camera_buf_ves ;
+  526:     uint8_t *out_buf = camera_buf;
+  527: 
+  528:     /*
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 535
+MATCH: camera_buf
+  533:     const uint32_t motion_divider = 6U;
+  534:     if ((motion_frame_counter % motion_divider) == 0U) {
+  535:         motion_process_rgb565(camera_buf,
+  536:                               camera_buf_hes,
+  537:                               camera_buf_ves,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 536
+MATCH: camera_buf_hes
+  534:     if ((motion_frame_counter % motion_divider) == 0U) {
+  535:         motion_process_rgb565(camera_buf,
+  536:                               camera_buf_hes,
+  537:                               camera_buf_ves,
+  538:                               camera_buf_len);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 537
+MATCH: camera_buf_ves
+  535:         motion_process_rgb565(camera_buf,
+  536:                               camera_buf_hes,
+  537:                               camera_buf_ves,
+  538:                               camera_buf_len);
+  539:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 538
+MATCH: camera_buf
+  536:                               camera_buf_hes,
+  537:                               camera_buf_ves,
+  538:                               camera_buf_len);
+  539:     }
+  540: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 552
+MATCH: camera_buf_hes
+  550:         (face_frame_counter % FACE_DETECT_EVERY_N_FRAMES) == 0) {
+  551: 
+  552:         size_t required = (size_t)camera_buf_hes * camera_buf_ves * 2;
+  553: 
+  554:         if (required <= face_ai_buffer_size &&
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 555
+MATCH: camera_buf
+  553: 
+  554:         if (required <= face_ai_buffer_size &&
+  555:             required <= camera_buf_len &&
+  556:             xSemaphoreTake(face_ai_mutex, 0) == pdTRUE) {
+  557: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 558
+MATCH: camera_buf
+  556:             xSemaphoreTake(face_ai_mutex, 0) == pdTRUE) {
+  557: 
+  558:             memcpy(face_ai_buffer, camera_buf, required);
+  559:             face_ai_width = (uint16_t)camera_buf_hes;
+  560:             face_ai_height = (uint16_t)camera_buf_ves;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 559
+MATCH: camera_buf_hes
+  557: 
+  558:             memcpy(face_ai_buffer, camera_buf, required);
+  559:             face_ai_width = (uint16_t)camera_buf_hes;
+  560:             face_ai_height = (uint16_t)camera_buf_ves;
+  561:             face_ai_pending = true;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 560
+MATCH: camera_buf_ves
+  558:             memcpy(face_ai_buffer, camera_buf, required);
+  559:             face_ai_width = (uint16_t)camera_buf_hes;
+  560:             face_ai_height = (uint16_t)camera_buf_ves;
+  561:             face_ai_pending = true;
+  562: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 567
+MATCH: cam_buff
+  565:     }
+  566: /* KORVO_V17_1TO1: native viewport, no fullscreen PPA scaling */
+  567:     uint8_t *v17_dst = (uint8_t *)cam_buff[camera_buf_index];
+  568:     const uint8_t *v17_src = (const uint8_t *)camera_buf;
+  569:     const size_t v17_copy_w = camera_buf_hes < 320 ? camera_buf_hes : 320;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 568
+MATCH: camera_buf
+  566: /* KORVO_V17_1TO1: native viewport, no fullscreen PPA scaling */
+  567:     uint8_t *v17_dst = (uint8_t *)cam_buff[camera_buf_index];
+  568:     const uint8_t *v17_src = (const uint8_t *)camera_buf;
+  569:     const size_t v17_copy_w = camera_buf_hes < 320 ? camera_buf_hes : 320;
+  570:     const size_t v17_copy_h = camera_buf_ves < 240 ? camera_buf_ves : 240;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 569
+MATCH: camera_buf_hes
+  567:     uint8_t *v17_dst = (uint8_t *)cam_buff[camera_buf_index];
+  568:     const uint8_t *v17_src = (const uint8_t *)camera_buf;
+  569:     const size_t v17_copy_w = camera_buf_hes < 320 ? camera_buf_hes : 320;
+  570:     const size_t v17_copy_h = camera_buf_ves < 240 ? camera_buf_ves : 240;
+  571:     const size_t v17_src_stride = (size_t)camera_buf_hes * 2U;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 570
+MATCH: camera_buf_ves
+  568:     const uint8_t *v17_src = (const uint8_t *)camera_buf;
+  569:     const size_t v17_copy_w = camera_buf_hes < 320 ? camera_buf_hes : 320;
+  570:     const size_t v17_copy_h = camera_buf_ves < 240 ? camera_buf_ves : 240;
+  571:     const size_t v17_src_stride = (size_t)camera_buf_hes * 2U;
+  572:     const size_t v17_dst_stride = 320U * 2U;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 571
+MATCH: camera_buf_hes
+  569:     const size_t v17_copy_w = camera_buf_hes < 320 ? camera_buf_hes : 320;
+  570:     const size_t v17_copy_h = camera_buf_ves < 240 ? camera_buf_ves : 240;
+  571:     const size_t v17_src_stride = (size_t)camera_buf_hes * 2U;
+  572:     const size_t v17_dst_stride = 320U * 2U;
+  573:     memset(v17_dst, 0, 320U * 240U * 2U);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 575
+MATCH: memcpy
+  573:     memset(v17_dst, 0, 320U * 240U * 2U);
+  574:     for (size_t v17_y = 0; v17_y < v17_copy_h; ++v17_y) {
+  575:         memcpy(v17_dst + v17_y * v17_dst_stride,
+  576:                v17_src + (v17_copy_h - 1U - v17_y) * v17_src_stride,
+  577:                v17_copy_w * 2U);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 579
+MATCH: cam_buff
+  577:                v17_copy_w * 2U);
+  578:     }
+  579:     out_buf = cam_buff[camera_buf_index];
+  580:     out_w = 320; out_h = 240; /* V17.2 */
+  581: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 580
+MATCH: out_w
+  578:     }
+  579:     out_buf = cam_buff[camera_buf_index];
+  580:     out_w = 320; out_h = 240; /* V17.2 */
+  581: 
+  582:     /* V05: present every captured frame. */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 584
+MATCH: lv_canvas_set_buffer
+  582:     /* V05: present every captured frame. */
+  583:     bsp_display_lock(0);
+  584:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  585:     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+  586:     lv_obj_invalidate(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 585
+MATCH: camera_canvas
+  583:     bsp_display_lock(0);
+  584:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  585:     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+  586:     lv_obj_invalidate(camera_canvas);
+  587:     bsp_display_unlock();
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 586
+MATCH: camera_canvas
+  584:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  585:     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+  586:     lv_obj_invalidate(camera_canvas);
+  587:     bsp_display_unlock();
+  588: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 803
+MATCH: cam_buff
+  801: 
+  802:     /* Allocate canvas buffers */
+  803:     cam_buff_size = ALIGN_UP(320U * 240U * 2U, data_cache_line_size); /* V17 */
+  804:     for (int i = 0; i < NUM_BUFS; i++) {
+  805:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 805
+MATCH: cam_buff
+  803:     cam_buff_size = ALIGN_UP(320U * 240U * 2U, data_cache_line_size); /* V17 */
+  804:     for (int i = 0; i < NUM_BUFS; i++) {
+  805:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+  806:         if (cam_buff[i] == NULL) {
+  807:             ESP_LOGE(TAG, "Failed to allocate camera buffer %d", i);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 806
+MATCH: cam_buff
+  804:     for (int i = 0; i < NUM_BUFS; i++) {
+  805:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+  806:         if (cam_buff[i] == NULL) {
+  807:             ESP_LOGE(TAG, "Failed to allocate camera buffer %d", i);
+  808:             return;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 872
+MATCH: v17_video_viewport
+  870:     /* Create LVGL canvas for camera image */
+  871:     bsp_display_lock(0);
+  872:     lv_obj_t *v17_video_viewport = lv_obj_create(lv_scr_act());
+  873:     lv_obj_remove_style_all(v17_video_viewport);
+  874:     lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 873
+MATCH: v17_video_viewport
+  871:     bsp_display_lock(0);
+  872:     lv_obj_t *v17_video_viewport = lv_obj_create(lv_scr_act());
+  873:     lv_obj_remove_style_all(v17_video_viewport);
+  874:     lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */
+  875:     lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.6 horizontal center only; was X=292 */ /* V17.5 exact */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 874
+MATCH: v17_video_viewport
+  872:     lv_obj_t *v17_video_viewport = lv_obj_create(lv_scr_act());
+  873:     lv_obj_remove_style_all(v17_video_viewport);
+  874:     lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */
+  875:     lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.6 horizontal center only; was X=292 */ /* V17.5 exact */
+  876:     lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 875
+MATCH: v17_video_viewport
+  873:     lv_obj_remove_style_all(v17_video_viewport);
+  874:     lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */
+  875:     lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.6 horizontal center only; was X=292 */ /* V17.5 exact */
+  876:     lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
+  877:     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 876
+MATCH: v17_video_viewport
+  874:     lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */
+  875:     lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.6 horizontal center only; was X=292 */ /* V17.5 exact */
+  876:     lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
+  877:     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
+  878:     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 877
+MATCH: v17_video_viewport
+  875:     lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.6 horizontal center only; was X=292 */ /* V17.5 exact */
+  876:     lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
+  877:     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
+  878:     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
+  879:     camera_canvas = lv_canvas_create(v17_video_viewport);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 878
+MATCH: v17_video_viewport
+  876:     lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
+  877:     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
+  878:     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
+  879:     camera_canvas = lv_canvas_create(v17_video_viewport);
+  880:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], 320, 240, lvgl_cam_rgb565_fmt); /* V17 */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 879
+MATCH: lv_canvas
+  877:     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
+  878:     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
+  879:     camera_canvas = lv_canvas_create(v17_video_viewport);
+  880:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], 320, 240, lvgl_cam_rgb565_fmt); /* V17 */
+  881:     assert(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 880
+MATCH: lv_canvas_set_buffer
+  878:     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
+  879:     camera_canvas = lv_canvas_create(v17_video_viewport);
+  880:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], 320, 240, lvgl_cam_rgb565_fmt); /* V17 */
+  881:     assert(camera_canvas);
+  882:     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 881
+MATCH: camera_canvas
+  879:     camera_canvas = lv_canvas_create(v17_video_viewport);
+  880:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], 320, 240, lvgl_cam_rgb565_fmt); /* V17 */
+  881:     assert(camera_canvas);
+  882:     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+  883: /* ===== KORVO ACCESS HMI ===== */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main.c
+LINE: 882
+MATCH: camera_canvas
+  880:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], 320, 240, lvgl_cam_rgb565_fmt); /* V17 */
+  881:     assert(camera_canvas);
+  882:     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+  883: /* ===== KORVO ACCESS HMI ===== */
+  884:     korvo_hmi_init();
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 43
+MATCH: camera_canvas
+   41: #endif
+   42: static size_t data_cache_line_size = 0;
+   43: static lv_obj_t *camera_canvas = NULL;
+   44: static uint8_t *cam_buff[NUM_BUFS];
+   45: static uint32_t cam_buff_size = 0;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 44
+MATCH: cam_buff
+   42: static size_t data_cache_line_size = 0;
+   43: static lv_obj_t *camera_canvas = NULL;
+   44: static uint8_t *cam_buff[NUM_BUFS];
+   45: static uint32_t cam_buff_size = 0;
+   46: static lv_color_format_t lvgl_cam_rgb565_fmt;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 45
+MATCH: cam_buff
+   43: static lv_obj_t *camera_canvas = NULL;
+   44: static uint8_t *cam_buff[NUM_BUFS];
+   45: static uint32_t cam_buff_size = 0;
+   46: static lv_color_format_t lvgl_cam_rgb565_fmt;
+   47: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 74
+MATCH: app_image_process_scale_crop
+   72: }
+   73: 
+   74: static esp_err_t app_image_process_scale_crop(
+   75:     uint8_t *in_buf, uint32_t in_width, uint32_t in_height,
+   76:     uint8_t *out_buf, uint32_t out_width, uint32_t out_height, size_t out_buf_size,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 76
+MATCH: out_w
+   74: static esp_err_t app_image_process_scale_crop(
+   75:     uint8_t *in_buf, uint32_t in_width, uint32_t in_height,
+   76:     uint8_t *out_buf, uint32_t out_width, uint32_t out_height, size_t out_buf_size,
+   77:     ppa_srm_rotation_angle_t rotation_angle)
+   78: {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 79
+MATCH: out_w
+   77:     ppa_srm_rotation_angle_t rotation_angle)
+   78: {
+   79:     float scale_x = (float)out_width / in_width;
+   80:     float scale_y = (float)out_height / in_height;
+   81: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 80
+MATCH: out_h
+   78: {
+   79:     float scale_x = (float)out_width / in_width;
+   80:     float scale_y = (float)out_height / in_height;
+   81: 
+   82:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 83
+MATCH: out_h
+   81: 
+   82:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+   83:         scale_x = (float)out_height / in_width;
+   84:         scale_y = (float)out_width / in_height;
+   85:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 84
+MATCH: out_w
+   82:     if (rotation_angle == PPA_SRM_ROTATION_ANGLE_90 || rotation_angle == PPA_SRM_ROTATION_ANGLE_270) {
+   83:         scale_x = (float)out_height / in_width;
+   84:         scale_y = (float)out_width / in_height;
+   85:     }
+   86: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 98
+MATCH: out_w
+   96:         .out.buffer = out_buf,
+   97:         .out.buffer_size = out_buf_size,
+   98:         .out.pic_w = out_width,
+   99:         .out.pic_h = out_height,
+  100:         .out.block_offset_x = 0,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 99
+MATCH: out_h
+   97:         .out.buffer_size = out_buf_size,
+   98:         .out.pic_w = out_width,
+   99:         .out.pic_h = out_height,
+  100:         .out.block_offset_x = 0,
+  101:         .out.block_offset_y = 0,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 114
+MATCH: calc_aspect_fit
+  112: }
+  113: 
+  114: static void calc_aspect_fit(
+  115:     uint32_t src_w, uint32_t src_h,
+  116:     uint32_t dst_w, uint32_t dst_h,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 117
+MATCH: out_w
+  115:     uint32_t src_w, uint32_t src_h,
+  116:     uint32_t dst_w, uint32_t dst_h,
+  117:     uint32_t *out_w, uint32_t *out_h)
+  118: {
+  119:     float src_aspect = (float)src_w / src_h;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 123
+MATCH: out_w
+  121: 
+  122:     if (src_aspect > dst_aspect) {
+  123:         *out_w = dst_w;
+  124:         *out_h = dst_w / src_aspect;
+  125:     } else {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 124
+MATCH: out_h
+  122:     if (src_aspect > dst_aspect) {
+  123:         *out_w = dst_w;
+  124:         *out_h = dst_w / src_aspect;
+  125:     } else {
+  126:         *out_h = dst_h;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 126
+MATCH: out_h
+  124:         *out_h = dst_w / src_aspect;
+  125:     } else {
+  126:         *out_h = dst_h;
+  127:         *out_w = dst_h * src_aspect;
+  128:     }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 127
+MATCH: out_w
+  125:     } else {
+  126:         *out_h = dst_h;
+  127:         *out_w = dst_h * src_aspect;
+  128:     }
+  129: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 131
+MATCH: camera_buf_hes
+  129: }
+  130: #endif
+  131: static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+  132:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  133: {
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 132
+MATCH: camera_buf_ves
+  130: #endif
+  131: static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
+  132:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  133: {
+  134:     uint32_t out_w = camera_buf_hes;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 134
+MATCH: out_w
+  132:         uint32_t camera_buf_ves, size_t camera_buf_len)
+  133: {
+  134:     uint32_t out_w = camera_buf_hes;
+  135:     uint32_t out_h = camera_buf_ves ;
+  136:     uint8_t *out_buf = camera_buf;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 135
+MATCH: out_h
+  133: {
+  134:     uint32_t out_w = camera_buf_hes;
+  135:     uint32_t out_h = camera_buf_ves ;
+  136:     uint8_t *out_buf = camera_buf;
+  137: #if SOC_PPA_SUPPORTED
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 136
+MATCH: camera_buf
+  134:     uint32_t out_w = camera_buf_hes;
+  135:     uint32_t out_h = camera_buf_ves ;
+  136:     uint8_t *out_buf = camera_buf;
+  137: #if SOC_PPA_SUPPORTED
+  138:     ppa_srm_rotation_angle_t rotation = PPA_SRM_ROTATION_ANGLE_0;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 157
+MATCH: calc_aspect_fit
+  155:     /* Get size of camera for screen (by aspect ratio)  */
+  156:     if (BSP_CAMERA_ROTATION == 90 || BSP_CAMERA_ROTATION == 270) {
+  157:         calc_aspect_fit(camera_buf_ves, camera_buf_hes, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+  158:     } else {
+  159:         calc_aspect_fit(camera_buf_hes, camera_buf_ves, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 159
+MATCH: calc_aspect_fit
+  157:         calc_aspect_fit(camera_buf_ves, camera_buf_hes, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+  158:     } else {
+  159:         calc_aspect_fit(camera_buf_hes, camera_buf_ves, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+  160:     }
+  161: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 163
+MATCH: app_image_process_scale_crop
+  161: 
+  162:     /* Scale camera picture for the screen + rotation */
+  163:     app_image_process_scale_crop(
+  164:         camera_buf, camera_buf_hes, camera_buf_ves,
+  165:         cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 164
+MATCH: camera_buf_hes
+  162:     /* Scale camera picture for the screen + rotation */
+  163:     app_image_process_scale_crop(
+  164:         camera_buf, camera_buf_hes, camera_buf_ves,
+  165:         cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+  166:         rotation
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 165
+MATCH: cam_buff
+  163:     app_image_process_scale_crop(
+  164:         camera_buf, camera_buf_hes, camera_buf_ves,
+  165:         cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+  166:         rotation
+  167:     );
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 168
+MATCH: cam_buff
+  166:         rotation
+  167:     );
+  168:     out_buf = cam_buff[camera_buf_index];
+  169: #endif
+  170: 
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 172
+MATCH: lv_canvas_set_buffer
+  170: 
+  171:     bsp_display_lock(0);
+  172:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  173:     lv_obj_center(camera_canvas);
+  174:     lv_obj_invalidate(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 173
+MATCH: camera_canvas
+  171:     bsp_display_lock(0);
+  172:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  173:     lv_obj_center(camera_canvas);
+  174:     lv_obj_invalidate(camera_canvas);
+  175:     bsp_display_unlock();
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 174
+MATCH: camera_canvas
+  172:     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+  173:     lv_obj_center(camera_canvas);
+  174:     lv_obj_invalidate(camera_canvas);
+  175:     bsp_display_unlock();
+  176: }
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 201
+MATCH: cam_buff
+  199: 
+  200:     /* Allocate canvas buffers */
+  201:     cam_buff_size = ALIGN_UP(BSP_LCD_H_RES * BSP_LCD_V_RES * 2, data_cache_line_size);
+  202:     for (int i = 0; i < NUM_BUFS; i++) {
+  203:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 203
+MATCH: cam_buff
+  201:     cam_buff_size = ALIGN_UP(BSP_LCD_H_RES * BSP_LCD_V_RES * 2, data_cache_line_size);
+  202:     for (int i = 0; i < NUM_BUFS; i++) {
+  203:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+  204:         if (cam_buff[i] == NULL) {
+  205:             ESP_LOGE(TAG, "Failed to allocate camera buffer %d", i);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 204
+MATCH: cam_buff
+  202:     for (int i = 0; i < NUM_BUFS; i++) {
+  203:         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
+  204:         if (cam_buff[i] == NULL) {
+  205:             ESP_LOGE(TAG, "Failed to allocate camera buffer %d", i);
+  206:             return;
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 221
+MATCH: lv_canvas
+  219:     /* Create LVGL canvas for camera image */
+  220:     bsp_display_lock(0);
+  221:     camera_canvas = lv_canvas_create(lv_scr_act());
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 222
+MATCH: lv_canvas_set_buffer
+  220:     bsp_display_lock(0);
+  221:     camera_canvas = lv_canvas_create(lv_scr_act());
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+  224:     lv_obj_center(camera_canvas);
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 223
+MATCH: camera_canvas
+  221:     camera_canvas = lv_canvas_create(lv_scr_act());
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+  224:     lv_obj_center(camera_canvas);
+  225: /* ===== KORVO ACCESS HMI ===== */
+--------------------------------------------------------------------------------
+FILE: C:\KORVO\esp-bsp\examples\display_camera_video\main\main_actual.txt
+LINE: 224
+MATCH: camera_canvas
+  222:     lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
+  223:     assert(camera_canvas);
+  224:     lv_obj_center(camera_canvas);
+  225: /* ===== KORVO ACCESS HMI ===== */
+  226: 
+--------------------------------------------------------------------------------

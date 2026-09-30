@@ -19,8 +19,6 @@ typedef enum {
 void korvo_hmi_init(void);
 void korvo_hmi_sleep(void);
 void korvo_hmi_wake(void);
-void korvo_hmi_update_video_resolution(uint16_t width, uint16_t height);
-
 
 /* Clear temporal face stability immediately when ESP-DL loses the face. */
 void korvo_hmi_no_face(void);

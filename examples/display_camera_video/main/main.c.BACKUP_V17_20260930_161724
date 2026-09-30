@@ -563,42 +563,44 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
             xSemaphoreGive(face_ai_mutex);
         }
     }
-/* KORVO_V17_1TO1: native viewport, no fullscreen PPA scaling */
-
-    /*
-     * V17.8: PPA FIT REAL.
-     * Genera 400x300 manteniendo la relacion de aspecto.
-     */
-    uint32_t out_w = 400;
-    uint32_t out_h = 300;
-    uint8_t *out_buf = cam_buff[camera_buf_index];
-
 #if SOC_PPA_SUPPORTED
-    if (app_image_process_scale_crop(
-            camera_buf,
-            camera_buf_hes,
-            camera_buf_ves,
-            out_buf,
-            out_w,
-            out_h,
-            cam_buff_size,
-            rotation) != ESP_OK) {
-        ESP_LOGW(TAG, "V17.8 PPA FIT failed");
-        return;
+    ppa_srm_rotation_angle_t rotation = PPA_SRM_ROTATION_ANGLE_0;
+
+    switch (BSP_CAMERA_ROTATION) {
+    case 0:
+        rotation = PPA_SRM_ROTATION_ANGLE_0;
+        break;
+    case 90:
+        rotation = PPA_SRM_ROTATION_ANGLE_90;
+        break;
+    case 180:
+        rotation = PPA_SRM_ROTATION_ANGLE_180;
+        break;
+    case 270:
+        rotation = PPA_SRM_ROTATION_ANGLE_270;
+        break;
     }
-#else
-    ESP_LOGW(TAG, "V17.8 requires PPA");
-    return;
+
+    /* Get size of camera for screen (by aspect ratio)  */
+    if (BSP_CAMERA_ROTATION == 90 || BSP_CAMERA_ROTATION == 270) {
+        calc_aspect_fit(camera_buf_ves, camera_buf_hes, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+    } else {
+        calc_aspect_fit(camera_buf_hes, camera_buf_ves, BSP_LCD_H_RES, BSP_LCD_V_RES, &out_w, &out_h);
+    }
+
+    /* Scale camera picture for the screen + rotation */
+    app_image_process_scale_crop(
+        camera_buf, camera_buf_hes, camera_buf_ves,
+        cam_buff[camera_buf_index], out_w, out_h, cam_buff_size,
+        rotation
+    );
+    out_buf = cam_buff[camera_buf_index];
 #endif
 
+    /* V05: present every captured frame. */
     bsp_display_lock(0);
     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
-    lv_obj_set_pos(camera_canvas, 0, 0);
-    lv_obj_invalidate(camera_canvas);
-    bsp_display_unlock();
-    bsp_display_lock(0);
-    lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
-    lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+    lv_obj_center(camera_canvas);
     lv_obj_invalidate(camera_canvas);
     bsp_display_unlock();
 }
@@ -701,14 +703,6 @@ static const char *sip_hmi_state(korvo_sip_state_t state)
     }
 }
 
-static void v17_gateway_event_hmi(const korvo_gateway_event_t *ev, void *ctx)
-{
-    (void)ctx;
-    if(!ev) return;
-    if(!strncmp(ev->name,"reader.",7) || strstr(ev->name,"card")) korvo_hmi_pulse_reader();
-    if(!strncmp(ev->name,"door.",5) || !strncmp(ev->name,"rex.",4)) korvo_hmi_pulse_door();
-}
-
 static void gateway_hmi_task(void *arg)
 {
     (void)arg;
@@ -716,15 +710,12 @@ static void gateway_hmi_task(void *arg)
     static korvo_gateway_status_t gw;
     static korvo_sip_status_t sip;
     static korvo_bluetooth_status_t bt;
-    static korvo_network_status_t net;
     for (;;) {
         korvo_bluetooth_supervise();
         korvo_gateway_get_status(&gw);
         korvo_sip_get_status(&sip);
         korvo_bluetooth_get_status(&bt);
-        korvo_network_get_status(&net);
         korvo_hmi_update_bluetooth(&bt);
-        korvo_hmi_update_location(net.config.ip, gw.local.hostname);
         korvo_hmi_update_gateway_status(gw.local.hostname,
                                         gw.expected_gateway.name,
                                         gw.gateway_ok,
@@ -816,7 +807,7 @@ void app_main(void)
     }
 
     /* Allocate canvas buffers */
-    cam_buff_size = ALIGN_UP(320U * 240U * 2U, data_cache_line_size); /* V17 */
+    cam_buff_size = ALIGN_UP(BSP_LCD_H_RES * BSP_LCD_V_RES * 2, data_cache_line_size);
     for (int i = 0; i < NUM_BUFS; i++) {
         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
         if (cam_buff[i] == NULL) {
@@ -826,7 +817,7 @@ void app_main(void)
     }
 
     /* Dedicated full VGA RGB565 buffer for ESP-DL */
-    face_ai_buffer_size = 320U * 240U * 2U; /* V17 */
+    face_ai_buffer_size = 640U * 480U * 2U;
     face_ai_buffer = heap_caps_malloc(face_ai_buffer_size, MALLOC_CAP_SPIRAM);
     if (face_ai_buffer == NULL) {
         ESP_LOGE(TAG, "Failed to allocate face AI buffer (%u bytes)",
@@ -860,42 +851,14 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
         esp_restart();
     }
-    /* KORVO_V17_QVGA */
-    struct v4l2_format v17_fmt = {0};
-    v17_fmt.type=V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v17_fmt.fmt.pix.width=320; v17_fmt.fmt.pix.height=240;
-    v17_fmt.fmt.pix.pixelformat=app_video_get_pixelformat();
-    v17_fmt.fmt.pix.field=V4L2_FIELD_ANY;
-    if(ioctl(fd,VIDIOC_S_FMT,&v17_fmt)<0)
-        ESP_LOGW(TAG,"V17 QVGA request failed; driver kept current mode");
-    else
-        ESP_LOGI(TAG,"V17 camera mode %lux%lu",(unsigned long)v17_fmt.fmt.pix.width,(unsigned long)v17_fmt.fmt.pix.height);
-    /* KORVO_V17_2_G_FMT */
-    struct v4l2_format v17_actual = {0};
-    v17_actual.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_G_FMT, &v17_actual) == 0) {
-        ESP_LOGI(TAG, "V17.2 V4L2 ACTUAL=%lux%lu fourcc=0x%08lx",
-                 (unsigned long)v17_actual.fmt.pix.width,
-                 (unsigned long)v17_actual.fmt.pix.height,
-                 (unsigned long)v17_actual.fmt.pix.pixelformat);
-        korvo_hmi_update_video_resolution((uint16_t)v17_actual.fmt.pix.width,
-                                          (uint16_t)v17_actual.fmt.pix.height);
-    }
     lvgl_cam_rgb565_fmt = lvgl_rgb565_fmt_from_v4l2(app_video_get_pixelformat());
 
     /* Create LVGL canvas for camera image */
     bsp_display_lock(0);
-    lv_obj_t *v17_video_viewport = lv_obj_create(lv_scr_act());
-    lv_obj_remove_style_all(v17_video_viewport);
-    lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */
-    lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.6 horizontal center only; was X=292 */ /* V17.5 exact */
-    lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
-    camera_canvas = lv_canvas_create(v17_video_viewport);
-    lv_canvas_set_buffer(camera_canvas, cam_buff[0], 400, 300, lvgl_cam_rgb565_fmt); /* V17.8 */
+    camera_canvas = lv_canvas_create(lv_scr_act());
+    lv_canvas_set_buffer(camera_canvas, cam_buff[0], BSP_LCD_H_RES, BSP_LCD_V_RES, lvgl_cam_rgb565_fmt);
     assert(camera_canvas);
-    lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+    lv_obj_center(camera_canvas);
 /* ===== KORVO ACCESS HMI ===== */
     korvo_hmi_init();
 
@@ -985,7 +948,6 @@ void app_main(void)
     }
 
     esp_err_t gateway_ret = korvo_gateway_init();
-    korvo_gateway_add_listener(v17_gateway_event_hmi, NULL);
     if (gateway_ret != ESP_OK) {
         ESP_LOGE(TAG, "KORVO Gateway integration unavailable: %s", esp_err_to_name(gateway_ret));
     }

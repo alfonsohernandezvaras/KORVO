@@ -426,8 +426,8 @@ void korvo_hmi_init(void)
 
     s_guide = lv_obj_create(screen);
     lv_obj_remove_style_all(s_guide);
-    lv_obj_set_size(s_guide, 300, 240); /* V17.4 large ROI */
-    lv_obj_set_pos(s_guide, 342, 110); /* V17.6 horizontal only */ /* V17.4 centered ROI */
+    lv_obj_set_size(s_guide,180,210);
+    lv_obj_align(s_guide, LV_ALIGN_TOP_RIGHT, -119, 99); /* V17.3 */
     lv_obj_set_style_border_width(s_guide, 4, 0);
     lv_obj_set_style_border_color(s_guide, lv_color_white(), 0);
     lv_obj_set_style_border_opa(s_guide, LV_OPA_90, 0);
@@ -461,8 +461,8 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_color(s_message, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_message, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(s_message, 8, 0);
-    lv_obj_set_width(s_message, 400);
-    lv_obj_set_pos(s_message, 292, 385); /* V17.6 horizontal only */ /* V17.4 */
+    lv_obj_set_width(s_message, 320);
+    lv_obj_align(s_message, LV_ALIGN_TOP_RIGHT, -82, 334); /* V17.3 */
 
     /* V17 compact layout */
     s_v17_location=lv_label_create(screen); lv_label_set_text(s_v17_location,"IP: -- | HOST: --");
@@ -619,10 +619,10 @@ void korvo_hmi_track_face(const face_detection_t *face,
      * Map them to the LCD canvas. The current project uses rotation=0 in
      * normal operation; this mapping follows the aspect-fit dimensions.
      */
-    const int video_w = 400;
-    const int video_h = 300;
-    const int video_x = 292;
-    const int video_y = 80;
+    const int video_w = 320;
+    const int video_h = 240;
+    const int video_x = BSP_LCD_H_RES - 82 - video_w;
+    const int video_y = 82;
     int sx1 = video_x + (x1 * video_w) / camera_width;
     int sy1 = video_y + (y1 * video_h) / camera_height;
     int sx2 = video_x + (x2 * video_w) / camera_width;
