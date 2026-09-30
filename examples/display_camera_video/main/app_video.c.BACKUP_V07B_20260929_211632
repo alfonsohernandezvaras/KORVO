@@ -1,5 +1,3 @@
-#include <errno.h>
-#include <string.h>
 /*
  * SPDX-FileCopyrightText: 2025-2026 Espressif Systems (Shanghai) CO LTD
  *
@@ -50,21 +48,6 @@ uint32_t app_video_get_pixelformat(void)
     return app_camera_video.camera_pixelformat;
 }
 
-
-static void korvo_v4l2_dump_modes(int fd)
-{
-    ESP_LOGI(TAG, "========== KORVO V4L2 CAMERA DIAGNOSTIC ==========");
-    for (uint32_t fi=0;;++fi) {
-        struct v4l2_fmtdesc f={0}; f.type=V4L2_BUF_TYPE_VIDEO_CAPTURE; f.index=fi;
-        if (ioctl(fd, VIDIOC_ENUM_FMT, &f)!=0) break;
-        ESP_LOGI(TAG, "FMT[%lu] %c%c%c%c %s", (unsigned long)fi, f.pixelformat&0xff, (f.pixelformat>>8)&0xff, (f.pixelformat>>16)&0xff, (f.pixelformat>>24)&0xff, (char*)f.description);
-    }
-    struct v4l2_format cur={0}; cur.type=V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_G_FMT, &cur)==0)
-        ESP_LOGI(TAG, "ACTIVE FORMAT: %lux%lu %c%c%c%c", (unsigned long)cur.fmt.pix.width, (unsigned long)cur.fmt.pix.height, cur.fmt.pix.pixelformat&0xff, (cur.fmt.pix.pixelformat>>8)&0xff, (cur.fmt.pix.pixelformat>>16)&0xff, (cur.fmt.pix.pixelformat>>24)&0xff);
-    ESP_LOGI(TAG, "==================================================");
-}
-
 static void log_v4l2_fourcc(uint32_t f, const char *prefix)
 {
     char s[5] = {
@@ -110,7 +93,6 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
 
     ESP_LOGI(TAG, "width=%" PRIu32 " height=%" PRIu32, default_format.fmt.pix.width, default_format.fmt.pix.height);
     log_v4l2_fourcc(default_format.fmt.pix.pixelformat, "initial pixel format");
-    korvo_v4l2_dump_modes(fd);
 
     /* V05: request native VGA capture, preserving pixel format. */
     {
@@ -120,10 +102,10 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
         vga.fmt.pix.height = 480;
         vga.fmt.pix.pixelformat = default_format.fmt.pix.pixelformat;
         if (ioctl(fd, VIDIOC_S_FMT, &vga) != 0) {
-            ESP_LOGE(TAG, "V08 failed to request VGA 640x480");
+            ESP_LOGE(TAG, "V05 failed to request VGA 640x480");
             goto exit_0;
         }
-        ESP_LOGI(TAG, "V09 VGA baseline: 640x480");
+        ESP_LOGI(TAG, "V05 requested capture: 640x480");
     }
 
     if (init_fmt != APP_VIDEO_FMT_DRIVER_DEFAULT &&
@@ -176,7 +158,7 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
     app_camera_video.camera_buf_hes = default_format.fmt.pix.width;
     app_camera_video.camera_buf_ves = default_format.fmt.pix.height;
     app_camera_video.camera_pixelformat = default_format.fmt.pix.pixelformat;
-    ESP_LOGI(TAG, "V08 negotiated capture: %" PRIu32 "x%" PRIu32, app_camera_video.camera_buf_hes, app_camera_video.camera_buf_ves);
+    ESP_LOGI(TAG, "V05 negotiated capture: %" PRIu32 "x%" PRIu32, app_camera_video.camera_buf_hes, app_camera_video.camera_buf_ves);
     log_v4l2_fourcc(app_camera_video.camera_pixelformat, "capture pixel format");
 
     app_camera_video.video_stop_sem = xSemaphoreCreateBinary();

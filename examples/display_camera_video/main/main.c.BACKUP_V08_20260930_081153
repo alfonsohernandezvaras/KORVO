@@ -926,9 +926,7 @@ void app_main(void)
                      (unsigned long)camera_health_valid_samples,
                      CAMERA_HEALTH_VALID_SAMPLES);
             vTaskDelay(pdMS_TO_TICKS(500));
-            ESP_LOGE(TAG, "V10 CAMERA HEALTH FAILED -> RESTART");
-        vTaskDelay(pdMS_TO_TICKS(100));
-        esp_restart();
+            ESP_LOGW(TAG, "V07B: camera health check non-fatal; continuing");
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }

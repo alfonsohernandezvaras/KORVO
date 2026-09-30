@@ -77,7 +77,7 @@ static uint32_t cam_buff_size = 0;
 static lv_color_format_t lvgl_cam_rgb565_fmt;
 
 /* ===== FACE DETECTION ===== */
-#define FACE_DETECT_EVERY_N_FRAMES 24
+#define FACE_DETECT_EVERY_N_FRAMES 20
 #define CAMERA_START_RETRIES        5
 #define VIDEO_OPEN_RETRIES          10
 
@@ -388,8 +388,10 @@ static void motion_process_rgb565(const uint8_t *camera_buf,
         idle_ms = MOTION_IDLE_SLEEP_MS;
     }
 
-    /* V07: overlay diagnostico motion OFF; logica motion sigue activa. */
-    (void)idle_ms;
+    korvo_hmi_update_motion(motion_percent_x10,
+                            motion_active,
+                            idle_ms,
+                            MOTION_IDLE_SLEEP_MS);
 
     /*
      * Actual display sleep is based on real camera inactivity.
@@ -471,7 +473,7 @@ static void face_detection_task(void *arg)
              * detector. ESP-DL may classify/track a face, but a false-positive
              * face must never wake the LCD again after motion timeout.
              */
-            /* V07: ROI central fijo; sin tracking grafico. */
+            korvo_hmi_track_face(&result, face_ai_width, face_ai_height);
             korvo_hmi_update_face(&result, face_ai_width, face_ai_height);
 
             /*
@@ -530,8 +532,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * Use every 3rd video frame to keep callback cost low.
      */
     motion_frame_counter++;
-    const uint32_t motion_divider = 6U;
-    if ((motion_frame_counter % motion_divider) == 0U) {
+    if ((motion_frame_counter % 6U) == 0U) {
         motion_process_rgb565(camera_buf,
                               camera_buf_hes,
                               camera_buf_ves,
@@ -597,12 +598,16 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     out_buf = cam_buff[camera_buf_index];
 #endif
 
-    /* V05: present every captured frame. */
-    bsp_display_lock(0);
-    lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
-    lv_obj_center(camera_canvas);
-    lv_obj_invalidate(camera_canvas);
-    bsp_display_unlock();
+    /* Decimate only LCD presentation; camera/watchdog keep full stream. */
+    static uint8_t display_divider = 0;
+    if (++display_divider >= 3U) {
+        display_divider = 0;
+        bsp_display_lock(0);
+        lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+        lv_obj_center(camera_canvas);
+        lv_obj_invalidate(camera_canvas);
+        bsp_display_unlock();
+    }
 }
 
 
@@ -926,9 +931,7 @@ void app_main(void)
                      (unsigned long)camera_health_valid_samples,
                      CAMERA_HEALTH_VALID_SAMPLES);
             vTaskDelay(pdMS_TO_TICKS(500));
-            ESP_LOGE(TAG, "V10 CAMERA HEALTH FAILED -> RESTART");
-        vTaskDelay(pdMS_TO_TICKS(100));
-        esp_restart();
+            esp_restart();
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -1026,14 +1029,13 @@ void app_main(void)
      * face task stack in PSRAM so internal RAM remains available for BT/SIP,
      * timers and DMA.  The detector itself is unchanged.
      */
-    BaseType_t ai_task_ret = xTaskCreatePinnedToCoreWithCaps(
+    BaseType_t ai_task_ret = xTaskCreateWithCaps(
         face_detection_task,
         "face_ai",
         8192,
         NULL,
         5,
         NULL,
-        1,
         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
     );
 

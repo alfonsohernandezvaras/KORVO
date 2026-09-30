@@ -245,10 +245,12 @@ static void motion_process_rgb565(const uint8_t *camera_buf,
 
     const uint16_t *src = (const uint16_t *)camera_buf;
 
-    size_t samples_x = (width + MOTION_SAMPLE_STEP_PIXELS - 1) /
-                       MOTION_SAMPLE_STEP_PIXELS;
-    size_t samples_y = (height + MOTION_SAMPLE_STEP_PIXELS - 1) /
-                       MOTION_SAMPLE_STEP_PIXELS;
+    const uint32_t roi_x0 = width / 4U;
+    const uint32_t roi_x1 = width - roi_x0;
+    const uint32_t roi_y0 = height / 4U;
+    const uint32_t roi_y1 = height - roi_y0;
+    size_t samples_x = ((roi_x1-roi_x0)+MOTION_SAMPLE_STEP_PIXELS-1)/MOTION_SAMPLE_STEP_PIXELS;
+    size_t samples_y = ((roi_y1-roi_y0)+MOTION_SAMPLE_STEP_PIXELS-1)/MOTION_SAMPLE_STEP_PIXELS;
     size_t needed = samples_x * samples_y;
 
     if (motion_reference == NULL || motion_reference_count != needed) {
@@ -530,7 +532,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * Use every 3rd video frame to keep callback cost low.
      */
     motion_frame_counter++;
-    const uint32_t motion_divider = 6U;
+    const uint32_t motion_divider = motion_active ? 6U : 18U;
     if ((motion_frame_counter % motion_divider) == 0U) {
         motion_process_rgb565(camera_buf,
                               camera_buf_hes,
@@ -926,9 +928,7 @@ void app_main(void)
                      (unsigned long)camera_health_valid_samples,
                      CAMERA_HEALTH_VALID_SAMPLES);
             vTaskDelay(pdMS_TO_TICKS(500));
-            ESP_LOGE(TAG, "V10 CAMERA HEALTH FAILED -> RESTART");
-        vTaskDelay(pdMS_TO_TICKS(100));
-        esp_restart();
+            esp_restart();
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }

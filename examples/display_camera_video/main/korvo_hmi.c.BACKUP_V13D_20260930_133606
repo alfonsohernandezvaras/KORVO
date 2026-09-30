@@ -14,8 +14,7 @@ static lv_obj_t *s_guide = NULL;
 static lv_obj_t *s_message = NULL;
 static lv_obj_t *s_face_box = NULL;
 static lv_obj_t *s_face_center = NULL;
-static lv_obj_t *s_motion_diag = NULL;
-static lv_obj_t *s_system_load_card = NULL;
+static lv_obj_t *s_motion_diag = NULL;\nstatic lv_obj_t *s_system_load_card = NULL;
 static lv_obj_t *s_storage_diag = NULL;
 static lv_obj_t *s_gateway_footer = NULL;
 static lv_obj_t *s_volume_slider = NULL;
@@ -115,26 +114,20 @@ static lv_obj_t *make_touch_button(lv_obj_t *parent, const char *text,
 /* V13 lightweight system diagnostics; refresh max 1 Hz. */
 static void korvo_hmi_update_system_load_card(void)
 {
+    static TickType_t last_tick = 0;
     if (s_motion_diag == NULL) return;
+    TickType_t now = xTaskGetTickCount();
+    if ((now - last_tick) < pdMS_TO_TICKS(1000)) return;
+    last_tick = now;
     size_t int_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     size_t int_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     size_t ps_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t ps_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
     int core = xPortGetCoreID();
-
     lv_label_set_text_fmt(s_motion_diag,
-        "SYSTEM LOAD\nHMI CORE: %d\nSRAM FREE: %u KB\nSRAM MAX : %u KB\nPSRAM FREE: %u KB\nPSRAM MAX : %u KB",
+        "SYSTEM LOAD\nHMI: CPU%d\nSRAM: %u KB free\nSRAM max: %u KB\nPSRAM: %.2f MB free\nPSRAM max: %.2f MB",
         core, (unsigned)(int_free/1024U), (unsigned)(int_largest/1024U),
-        (unsigned)(ps_free/1024U), (unsigned)(ps_largest/1024U));
-
-    ESP_LOGI("SYSLOAD", "CORE=%d SRAM_FREE=%uKB SRAM_MAX=%uKB PSRAM_FREE=%uKB PSRAM_MAX=%uKB",
-        core, (unsigned)(int_free/1024U), (unsigned)(int_largest/1024U),
-        (unsigned)(ps_free/1024U), (unsigned)(ps_largest/1024U));
-}
-
-static void korvo_hmi_system_load_timer_cb(lv_timer_t *timer)
-{
-    (void)timer;
+        (double)ps_free/(1024.0*1024.0), (double)ps_largest/(1024.0*1024.0));
 }
 static void bt_local_set_error(const char *text)
 {
@@ -492,9 +485,6 @@ void korvo_hmi_init(void)
     lv_obj_set_style_text_font(s_motion_diag, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_align(s_motion_diag, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(s_motion_diag, LV_ALIGN_TOP_LEFT, 0, 0);
-    /* Independent SYSTEM LOAD timer, 1 Hz */
-    lv_timer_create(korvo_hmi_system_load_timer_cb, 1000, NULL);
-    korvo_hmi_update_system_load_card();
 
     /* Compact SD status card, symmetric with the motion diagnostic. */
     s_storage_diag = lv_label_create(screen);
@@ -842,6 +832,7 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
                              uint32_t idle_ms,
                              uint32_t sleep_ms)
 {
+    korvo_hmi_update_system_load_card();
     if (s_motion_diag == NULL) {
         return;
     }
