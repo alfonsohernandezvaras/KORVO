@@ -514,14 +514,6 @@ static void face_detection_task(void *arg)
     }
 }
 
-
-/* KORVO FLIP DISPLAY ONLY:
- * Dedicated RGB565 buffer for LVGL. Camera buffer remains untouched.
- * 320x240x2 = 153600 bytes.
- */
-static uint8_t *v17_flip_display_buffer = NULL;
-static size_t v17_flip_display_buffer_size = 0;
-
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
 {
@@ -532,55 +524,8 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     }
 
     uint32_t out_w = camera_buf_hes;
-    uint32_t out_h = camera_buf_ves;
+    uint32_t out_h = camera_buf_ves ;
     uint8_t *out_buf = camera_buf;
-
-    /*
-     * FLIP VERTICAL SOLO PARA DISPLAY.
-     * La camara/IA sigue usando camera_buf original.
-     */
-    size_t v17_flip_need = (size_t)camera_buf_hes * camera_buf_ves * 2U;
-    if (v17_flip_display_buffer == NULL ||
-        v17_flip_display_buffer_size < v17_flip_need) {
-        if (v17_flip_display_buffer != NULL) {
-            heap_caps_free(v17_flip_display_buffer);
-        }
-        v17_flip_display_buffer = heap_caps_malloc(
-            v17_flip_need,
-            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
-        );
-        if (v17_flip_display_buffer == NULL) {
-            ESP_LOGE(TAG, "FLIP display buffer allocation failed");
-            return;
-        }
-        v17_flip_display_buffer_size = v17_flip_need;
-    }
-
-    /*
-     * FLIP 180 SOLO PARA DISPLAY.
-     * Vertical: invierte las filas.
-     * Horizontal: invierte los pixeles dentro de cada fila.
-     * camera_buf queda completamente intacto para IA/camara.
-     */
-    const size_t v17_flip_row_bytes = (size_t)camera_buf_hes * 2U;
-    for (uint32_t v17_y = 0; v17_y < camera_buf_ves; ++v17_y) {
-        const uint8_t *v17_src =
-            camera_buf + ((size_t)(camera_buf_ves - 1U - v17_y) * v17_flip_row_bytes);
-        uint8_t *v17_dst =
-            v17_flip_display_buffer + ((size_t)v17_y * v17_flip_row_bytes);
-
-        for (uint32_t v17_x = 0; v17_x < camera_buf_hes; ++v17_x) {
-            const size_t src_pixel =
-                ((size_t)(camera_buf_hes - 1U - v17_x)) * 2U;
-            const size_t dst_pixel =
-                ((size_t)v17_x) * 2U;
-
-            v17_dst[dst_pixel]     = v17_src[src_pixel];
-            v17_dst[dst_pixel + 1] = v17_src[src_pixel + 1];
-        }
-    }
-
-    out_buf = v17_flip_display_buffer;
 
     /*
      * Lightweight motion sampling runs independently from ESP-DL.

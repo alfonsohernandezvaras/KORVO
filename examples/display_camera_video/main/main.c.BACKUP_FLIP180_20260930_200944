@@ -556,28 +556,13 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         v17_flip_display_buffer_size = v17_flip_need;
     }
 
-    /*
-     * FLIP 180 SOLO PARA DISPLAY.
-     * Vertical: invierte las filas.
-     * Horizontal: invierte los pixeles dentro de cada fila.
-     * camera_buf queda completamente intacto para IA/camara.
-     */
     const size_t v17_flip_row_bytes = (size_t)camera_buf_hes * 2U;
     for (uint32_t v17_y = 0; v17_y < camera_buf_ves; ++v17_y) {
         const uint8_t *v17_src =
             camera_buf + ((size_t)(camera_buf_ves - 1U - v17_y) * v17_flip_row_bytes);
         uint8_t *v17_dst =
             v17_flip_display_buffer + ((size_t)v17_y * v17_flip_row_bytes);
-
-        for (uint32_t v17_x = 0; v17_x < camera_buf_hes; ++v17_x) {
-            const size_t src_pixel =
-                ((size_t)(camera_buf_hes - 1U - v17_x)) * 2U;
-            const size_t dst_pixel =
-                ((size_t)v17_x) * 2U;
-
-            v17_dst[dst_pixel]     = v17_src[src_pixel];
-            v17_dst[dst_pixel + 1] = v17_src[src_pixel + 1];
-        }
+        memcpy(v17_dst, v17_src, v17_flip_row_bytes);
     }
 
     out_buf = v17_flip_display_buffer;
