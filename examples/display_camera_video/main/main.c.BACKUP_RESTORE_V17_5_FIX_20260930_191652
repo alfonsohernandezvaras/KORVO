@@ -569,7 +569,33 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * V17.8: PPA FIT REAL.
      * Genera 400x300 manteniendo la relacion de aspecto.
      */
+    uint32_t out_w = 400;
+    uint32_t out_h = 300;
+    uint8_t *out_buf = cam_buff[camera_buf_index];
 
+#if SOC_PPA_SUPPORTED
+    if (app_image_process_scale_crop(
+            camera_buf,
+            camera_buf_hes,
+            camera_buf_ves,
+            out_buf,
+            out_w,
+            out_h,
+            cam_buff_size,
+            rotation) != ESP_OK) {
+        ESP_LOGW(TAG, "V17.8 PPA FIT failed");
+        return;
+    }
+#else
+    ESP_LOGW(TAG, "V17.8 requires PPA");
+    return;
+#endif
+
+    bsp_display_lock(0);
+    lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+    lv_obj_set_pos(camera_canvas, 0, 0);
+    lv_obj_invalidate(camera_canvas);
+    bsp_display_unlock();
     bsp_display_lock(0);
     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
     lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
@@ -861,8 +887,8 @@ void app_main(void)
     bsp_display_lock(0);
     lv_obj_t *v17_video_viewport = lv_obj_create(lv_scr_act());
     lv_obj_remove_style_all(v17_video_viewport);
-    lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 */ /* V17.5 exact */ /* V17.5 exact */
-    lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.5 */
+    lv_obj_set_size(v17_video_viewport, 400, 300); /* V17.5 exact */ /* V17.5 exact */
+    lv_obj_set_pos(v17_video_viewport, 292, 80); /* V17.5 exact */
     lv_obj_set_style_bg_color(v17_video_viewport, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
