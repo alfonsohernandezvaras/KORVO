@@ -17,19 +17,12 @@ static lv_obj_t *s_face_box = NULL;
 static lv_obj_t *s_face_center = NULL;
 static lv_obj_t *s_motion_diag = NULL;
 static lv_obj_t *s_storage_diag = NULL;
-/* KORVO_V17_7_SD_STATUS_CARD_REAL */
-static lv_obj_t *s_storage_card = NULL;
-static lv_obj_t *s_storage_card_label = NULL;
 static lv_obj_t *s_gateway_footer = NULL;
 static lv_obj_t *s_volume_slider = NULL;
 static lv_obj_t *s_volume_label = NULL;
 static lv_obj_t *s_mic_slider = NULL;
 static lv_obj_t *s_mic_label = NULL;
 static lv_obj_t *s_video_resolution = NULL;
-/* KORVO_VSYNC_COUNTER_ONLY */
-static lv_obj_t *s_vsync_diag = NULL;
-extern uint32_t bsp_display_get_vsync_count(void);
-
 static lv_obj_t *s_v17_gateway_btn = NULL;
 static lv_obj_t *s_v17_reader_btn = NULL;
 static lv_obj_t *s_v17_door_btn = NULL;
@@ -481,30 +474,7 @@ void korvo_hmi_init(void)
     s_v17_door=v17_make_flag(screen,"PUERTA",176); s_v17_sd=v17_make_flag(screen,"SD CARD",228);
     s_v17_bt=v17_make_flag(screen,"BLUETOOTH",280); lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_v17_bt,bt_open_cb,LV_EVENT_CLICKED,NULL); lv_timer_create(v17_pulse_cb,100,NULL);
-    s_motion_diag = NULL;
-
-    /* KORVO V17.7 SD STATUS CARD REAL */
-    s_storage_card = lv_obj_create(screen);
-    lv_obj_remove_style_all(s_storage_card);
-    lv_obj_set_size(s_storage_card, 190, 48);
-    lv_obj_set_pos(s_storage_card, 18, 332);
-    lv_obj_set_style_bg_color(s_storage_card, lv_color_hex(0x202830), 0);
-    lv_obj_set_style_bg_opa(s_storage_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_storage_card, 1, 0);
-    lv_obj_set_style_border_color(s_storage_card, lv_color_hex(0x506070), 0);
-    lv_obj_set_style_radius(s_storage_card, 8, 0);
-    lv_obj_clear_flag(s_storage_card, LV_OBJ_FLAG_SCROLLABLE);
-
-    s_storage_card_label = lv_label_create(s_storage_card);
-    lv_obj_set_width(s_storage_card_label, 182);
-    lv_obj_set_style_text_color(s_storage_card_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_pad_all(s_storage_card_label, 2, 0);
-    lv_label_set_text(s_storage_card_label, "SD --  FS --  DIR --\nUSADO --  LIBRE --");
-    lv_obj_center(s_storage_card_label);
-
-    s_storage_diag = s_storage_card;
-    s_gateway_footer = NULL;
+    s_motion_diag = NULL; s_storage_diag = NULL; s_gateway_footer = NULL;
 
     /* Right-edge audio volume, kept outside the central camera/face ROI.
      * This controls the PCM sent to the HFP/SCO device, so it works for both
@@ -530,16 +500,6 @@ void korvo_hmi_init(void)
     lv_obj_set_style_pad_all(s_volume_label, 4, 0);
     lv_obj_align_to(s_volume_label, s_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
     volume_label_update(initial_volume);
-    /* KORVO_VSYNC_COUNTER_ONLY */
-    s_vsync_diag = lv_label_create(screen);
-    lv_obj_set_width(s_vsync_diag, 400);
-    lv_obj_set_style_text_color(s_vsync_diag, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_vsync_diag, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_bg_color(s_vsync_diag, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_vsync_diag, LV_OPA_60, 0);
-    lv_obj_set_style_pad_all(s_vsync_diag, 2, 0);
-    lv_obj_set_pos(s_vsync_diag, 292, 454);
-    lv_label_set_text(s_vsync_diag, "VSYNC: 0");
 
     /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
     s_mic_slider = lv_slider_create(screen);
@@ -852,11 +812,6 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
 
     bsp_display_lock(0);
     lv_label_set_text(s_motion_diag, text);
-    if (s_vsync_diag) {
-        char vsync_text[40];
-        snprintf(vsync_text, sizeof(vsync_text), "VSYNC: %lu", (unsigned long)bsp_display_get_vsync_count());
-        lv_label_set_text(s_vsync_diag, vsync_text);
-    }
     if (!s_bt_panel_visible) lv_obj_move_foreground(s_motion_diag);
     if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
     bsp_display_unlock();
@@ -871,50 +826,18 @@ void korvo_hmi_update_storage(bool sd_ok,
                               uint64_t used_bytes,
                               uint64_t free_bytes)
 {
-    if (!s_v17_sd_btn && !s_storage_card_label) return;
-
-    const char *sd_txt = sd_ok ? "OK" : "ERR";
-    const char *fs_txt = fs_ok ? "OK" : "ERR";
-    const char *dir_txt = structure_ok ? "OK" : "ERR";
-
-    unsigned long long used_mb =
-        (unsigned long long)(used_bytes / (1024ULL * 1024ULL));
-    unsigned long long free_mb =
-        (unsigned long long)(free_bytes / (1024ULL * 1024ULL));
-
-    char card_text[96];
-    snprintf(card_text, sizeof(card_text),
-             "SD %s  FS %s  DIR %s\n"
-             "USADO %llu MB  LIBRE %llu MB",
-             sd_txt, fs_txt, dir_txt, used_mb, free_mb);
-
+    (void)used_bytes; (void)free_bytes;
+    if (!s_v17_sd_btn) return;
     bsp_display_lock(0);
-
-    if (s_v17_sd_btn) {
-        lv_obj_set_style_bg_color(s_v17_sd_btn,
-            (sd_ok && fs_ok && structure_ok && storage_state == 1)
-            ? lv_palette_darken(LV_PALETTE_BLUE, 2)
-            : ((storage_state == 2 || storage_state == 3)
-               ? lv_palette_main(LV_PALETTE_ORANGE)
-               : lv_color_hex(0x26313B)), 0);
-    }
-
-    if (s_storage_card_label) {
-        lv_label_set_text(s_storage_card_label, card_text);
-        if (!s_bt_panel_visible && s_storage_card)
-            lv_obj_move_foreground(s_storage_card);
-        if (s_bt_panel_visible && s_bt_panel)
-            lv_obj_move_foreground(s_bt_panel);
-    }
-
-    if (s_v17_sd_btn && !s_bt_panel_visible)
-        lv_obj_move_foreground(s_v17_sd_btn);
-    if (s_bt_panel_visible && s_bt_panel)
-        lv_obj_move_foreground(s_bt_panel);
-
+    lv_obj_set_style_bg_color(s_v17_sd_btn,
+        (sd_ok && fs_ok && structure_ok && storage_state == 1)
+        ? lv_palette_darken(LV_PALETTE_BLUE, 2)
+        : ((storage_state == 2 || storage_state == 3)
+           ? lv_palette_main(LV_PALETTE_ORANGE) : lv_color_hex(0x26313B)), 0);
+    if (!s_bt_panel_visible) lv_obj_move_foreground(s_v17_sd_btn);
+    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
     bsp_display_unlock();
 }
-
 
 void korvo_hmi_update_bluetooth(const korvo_bluetooth_status_t *bt)
 {
