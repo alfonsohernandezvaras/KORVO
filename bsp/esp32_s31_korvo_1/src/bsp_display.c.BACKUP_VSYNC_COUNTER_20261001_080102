@@ -17,15 +17,8 @@
 #include "bsp/touch.h"
 
 #include "bsp/esp32_s31_korvo_1.h"
-/* KORVO_VSYNC_COUNTER_ONLY */
-static volatile uint32_t s_korvo_vsync_count = 0;
-static bool IRAM_ATTR korvo_vsync_counter_cb(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *edata, void *user_ctx)
-{ (void)panel; (void)edata; (void)user_ctx; s_korvo_vsync_count++; return false; }
-uint32_t bsp_display_get_vsync_count(void) { return s_korvo_vsync_count; }
-
 
 static const char *TAG = "ESP32-S31-Korvo-1";
-
 
 
 #if (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
@@ -122,17 +115,10 @@ esp_err_t bsp_display_new_with_handles(const bsp_display_config_t *config, bsp_l
 #endif
     };
     ESP_GOTO_ON_ERROR(esp_lcd_new_rgb_panel(&panel_conf, &ret_handles->panel), err, TAG, "RGB init failed");
-
     disp_handles.panel = ret_handles->panel;
 
     esp_lcd_panel_reset(ret_handles->panel);
     esp_lcd_panel_init(ret_handles->panel);
-    /* KORVO_VSYNC_COUNTER_ONLY: diagnostic only. */
-    {
-        const esp_lcd_rgb_panel_event_callbacks_t cbs = { .on_vsync = korvo_vsync_counter_cb };
-        esp_err_t cb_ret = esp_lcd_rgb_panel_register_event_callbacks(ret_handles->panel, &cbs, NULL);
-        if (cb_ret != ESP_OK) ESP_LOGE(TAG, "VSYNC callback registration failed: %s", esp_err_to_name(cb_ret));
-    }
     esp_lcd_panel_invert_color(ret_handles->panel, false);
     esp_lcd_panel_swap_xy(ret_handles->panel, false);
     esp_lcd_panel_mirror(ret_handles->panel, false, false);

@@ -26,6 +26,25 @@ uint32_t bsp_display_get_vsync_count(void) { return s_korvo_vsync_count; }
 
 static const char *TAG = "ESP32-S31-Korvo-1";
 
+/* KORVO_V18_1_REAL_VSYNC */
+static volatile uint32_t s_vsync_count = 0;
+
+static bool IRAM_ATTR bsp_display_on_vsync(
+    esp_lcd_panel_handle_t panel,
+    const esp_lcd_rgb_panel_event_data_t *edata,
+    void *user_ctx)
+{
+    (void)panel;
+    (void)edata;
+    (void)user_ctx;
+    s_vsync_count++;
+    return false;
+}
+
+uint32_t bsp_display_get_vsync_count(void)
+{
+    return s_vsync_count;
+}
 
 
 #if (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
@@ -123,6 +142,14 @@ esp_err_t bsp_display_new_with_handles(const bsp_display_config_t *config, bsp_l
     };
     ESP_GOTO_ON_ERROR(esp_lcd_new_rgb_panel(&panel_conf, &ret_handles->panel), err, TAG, "RGB init failed");
 
+    /* KORVO_V18_1_REAL_VSYNC: real RGB LCD VSYNC event. */
+    esp_lcd_rgb_panel_event_callbacks_t rgb_callbacks = {
+        .on_vsync = bsp_display_on_vsync,
+    };
+    ESP_GOTO_ON_ERROR(
+        esp_lcd_rgb_panel_register_event_callbacks(
+            ret_handles->panel, &rgb_callbacks, NULL),
+        err, TAG, "VSYNC callback registration failed");
     disp_handles.panel = ret_handles->panel;
 
     esp_lcd_panel_reset(ret_handles->panel);
