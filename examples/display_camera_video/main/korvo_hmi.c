@@ -143,6 +143,17 @@ static lv_obj_t *v17_make_flag(lv_obj_t *p,const char *txt,int y){
     lv_obj_t *l=lv_label_create(o); lv_label_set_text(l,txt); lv_obj_set_style_text_color(l,lv_color_white(),0); lv_obj_center(l); return o;
 }
 static void v17_color(lv_obj_t *o,uint32_t c){if(o)lv_obj_set_style_bg_color(o,lv_color_hex(c),0);}
+static void v18_vsync_ui_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (!s_vsync_diag) return;
+    char text[40];
+    snprintf(text, sizeof(text), "VSYNC: %lu", (unsigned long)bsp_display_get_vsync_count());
+    bsp_display_lock(0);
+    lv_label_set_text(s_vsync_diag, text);
+    bsp_display_unlock();
+}
+
 static void v17_pulse_cb(lv_timer_t *t){(void)t;uint32_t n=lv_tick_get();
     if(s_v17_reader_until && n>=s_v17_reader_until){s_v17_reader_until=0;v17_color(s_v17_reader,0x202830);}
     if(s_v17_door_until && n>=s_v17_door_until){s_v17_door_until=0;v17_color(s_v17_door,0x202830);}
@@ -577,6 +588,7 @@ void korvo_hmi_init(void)
     lv_obj_set_pos(s_vsync_diag, 682, 446);
     lv_label_set_text(s_vsync_diag, "VSYNC: 0");
     v18_layout_perf_monitor();
+    lv_timer_create(v18_vsync_ui_cb, 500, NULL);
 
     /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
     s_mic_slider = lv_slider_create(screen);
@@ -860,7 +872,7 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
                              uint32_t idle_ms,
                              uint32_t sleep_ms)
 {
-    if (s_motion_diag == NULL) {
+    if (s_motion_diag == NULL && s_vsync_diag == NULL) {
         return;
     }
 
@@ -888,7 +900,7 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
              (unsigned long)(remain_tenths % 10U));
 
     bsp_display_lock(0);
-    lv_label_set_text(s_motion_diag, text);
+    if (s_motion_diag) lv_label_set_text(s_motion_diag, text);
     if (s_vsync_diag) {
         char vsync_text[40];
         snprintf(vsync_text, sizeof(vsync_text), "VSYNC: %lu", (unsigned long)bsp_display_get_vsync_count());
