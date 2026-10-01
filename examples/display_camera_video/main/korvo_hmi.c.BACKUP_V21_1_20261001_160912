@@ -28,9 +28,6 @@ static lv_obj_t *s_mic_label = NULL;
 static lv_obj_t *s_video_resolution = NULL;
 /* KORVO_V19_TOP_VSYNC */
 extern uint32_t bsp_display_get_vsync_count(void);
-extern uint32_t bsp_display_get_dma_count(void);
-extern uint32_t bsp_display_get_health_state(void);
-extern uint32_t bsp_display_get_fault_count(void);
 
 /* KORVO_V17_8_VISUAL_HMI */
 static lv_obj_t *s_v17_sip = NULL;
@@ -1035,14 +1032,11 @@ void korvo_hmi_update_location(const char *ip,const char *host){
     if (!s_v17_location) {
         return;
     }
-    uint32_t hs=bsp_display_get_health_state();
-    const char *ht=(hs==0)?"INICIO":((hs==1)?"OK":"FALLA");
-    char t[208];
-    snprintf(t,sizeof(t),"IP: %.15s | HOST: %.63s | VSYNC: %lu | DMA: %lu | LCD:%s | ERR:%lu",
-             (ip&&ip[0])?ip:"--",(host&&host[0])?host:"--",
-             (unsigned long)bsp_display_get_vsync_count(),
-             (unsigned long)bsp_display_get_dma_count(),
-             ht,(unsigned long)bsp_display_get_fault_count());
+    char t[160];
+    snprintf(t, sizeof(t), "IP: %.15s | HOST: %.63s | VSYNC: %lu",
+             (ip && ip[0]) ? ip : "--",
+             (host && host[0]) ? host : "--",
+             (unsigned long)bsp_display_get_vsync_count());
     bsp_display_lock(0);lv_label_set_text(s_v17_location,t);lv_obj_move_foreground(s_v17_location);
     if (s_bt_panel_visible && s_bt_panel) {
         lv_obj_move_foreground(s_bt_panel);

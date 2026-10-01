@@ -56,13 +56,6 @@ static const char *TAG = "LVGL";
  * actually registers for this panel.
  */
 extern void bsp_display_notify_vsync_from_isr(void);
-extern void bsp_display_notify_dma_from_isr(void);
-
-static LVGL_PORT_IRAM bool korvo_rgb_vsync_callback(
-        esp_lcd_panel_handle_t panel_io,
-        const esp_lcd_rgb_panel_event_data_t *edata,
-        void *user_ctx);
-
 
 /*******************************************************************************
 * Types definitions
@@ -216,7 +209,6 @@ lv_display_t *lvgl_port_add_disp_rgb(const lvgl_port_display_cfg_t *disp_cfg,
         };
 
         const esp_lcd_rgb_panel_event_callbacks_t bb_cbs = {
-            .on_vsync = korvo_rgb_vsync_callback,
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
             .on_frame_buf_complete = lvgl_port_flush_rgb_vsync_ready_callback,
 #elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 2)
@@ -560,26 +552,24 @@ static bool lvgl_port_flush_dpi_vsync_ready_callback(esp_lcd_panel_handle_t pane
 /* When LCD_RGB_ISR_IRAM_SAFE is enabled, this callback runs from IRAM.
  * user_ctx is lvgl_port_display_ctx_t* to avoid calling lv_display_get_driver_data()
  * which resides in flash and would crash when cache is disabled (e.g. during SPI flash ops). */
-/* KORVO_V21_1_DISPLAY_FAULT_LATCH */
-static LVGL_PORT_IRAM bool korvo_rgb_vsync_callback(esp_lcd_panel_handle_t panel_io,
-        const esp_lcd_rgb_panel_event_data_t *edata, void *user_ctx)
-{
-    (void)panel_io; (void)edata; (void)user_ctx;
-    bsp_display_notify_vsync_from_isr();
-    return false;
-}
-
 static LVGL_PORT_IRAM bool lvgl_port_flush_rgb_vsync_ready_callback(esp_lcd_panel_handle_t panel_io,
         const esp_lcd_rgb_panel_event_data_t *edata, void *user_ctx)
 {
-    BaseType_t need_yield=pdFALSE;
-    (void)panel_io; (void)edata;
-    bsp_display_notify_dma_from_isr();
+    BaseType_t need_yield = pdFALSE;
 
-    lvgl_port_display_ctx_t *disp_ctx=(lvgl_port_display_ctx_t *)user_ctx;
-    if(disp_ctx==NULL)return false;
-    if(disp_ctx->trans_sem)xSemaphoreGiveFromISR(disp_ctx->trans_sem,&need_yield);
-    return need_yield==pdTRUE;
+    /* KORVO_V20_1: count the real RGB callback/event. */
+    bsp_display_notify_vsync_from_isr();
+
+    lvgl_port_display_ctx_t *disp_ctx = (lvgl_port_display_ctx_t *)user_ctx;
+    if (disp_ctx == NULL) {
+        return false;
+    }
+
+    if (disp_ctx->trans_sem) {
+        xSemaphoreGiveFromISR(disp_ctx->trans_sem, &need_yield);
+    }
+
+    return (need_yield == pdTRUE);
 }
 #endif
 #endif

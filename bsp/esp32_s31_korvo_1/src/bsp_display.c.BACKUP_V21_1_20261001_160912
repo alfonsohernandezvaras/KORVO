@@ -17,59 +17,18 @@
 #include "bsp/touch.h"
 
 #include "bsp/esp32_s31_korvo_1.h"
-/* KORVO_V21_1_DISPLAY_FAULT_LATCH
- * Passive display diagnosis. No recovery/reset here.
- * VSYNC = physical on_vsync.
- * DMA   = on_frame_buf_complete / bounce-frame event.
- * Once a persistent coherence anomaly is detected, FALLA remains latched.
+/* KORVO_V20_VSYNC_REAL
+ * esp_lvgl_port owns the RGB callback after lvgl_port_add_disp_rgb().
+ * Count the event from that callback instead of registering a competing one.
  */
-static volatile uint32_t s_korvo_vsync_count=0;
-static volatile uint32_t s_korvo_dma_count=0;
-static volatile uint32_t s_korvo_display_fault_count=0;
-static volatile bool s_korvo_display_fault_latched=false;
-
-void IRAM_ATTR bsp_display_notify_vsync_from_isr(void){s_korvo_vsync_count++;}
-void IRAM_ATTR bsp_display_notify_dma_from_isr(void){s_korvo_dma_count++;}
-
-uint32_t bsp_display_get_vsync_count(void){return s_korvo_vsync_count;}
-uint32_t bsp_display_get_dma_count(void){return s_korvo_dma_count;}
-uint32_t bsp_display_get_fault_count(void){return s_korvo_display_fault_count;}
-
-/* 0=INICIO, 1=OK, 2=FALLA.
- * Called from normal task context. Three consecutive bad observation windows
- * are required to reject a single harmless scheduling sample.
- * FALLA is deliberately latched until reboot for development correlation.
- */
-uint32_t bsp_display_get_health_state(void)
+static volatile uint32_t s_korvo_vsync_count = 0;
+void IRAM_ATTR bsp_display_notify_vsync_from_isr(void)
 {
-    static uint32_t last_v=0,last_d=0;
-    static uint32_t bad_windows=0;
-    uint32_t v=s_korvo_vsync_count,d=s_korvo_dma_count;
-
-    if(s_korvo_display_fault_latched) return 2;
-    if(v<10 || d<10) {
-        last_v=v; last_d=d;
-        return 0;
-    }
-
-    uint32_t dv=v-last_v, dd=d-last_d;
-    last_v=v; last_d=d;
-
-    bool bad = (dv==0 || dd==0 ||
-                dv>dd+3 || dd>dv+3);
-
-    if(bad) {
-        if(bad_windows<1000) bad_windows++;
-    } else {
-        bad_windows=0;
-    }
-
-    if(bad_windows>=3) {
-        s_korvo_display_fault_count++;
-        s_korvo_display_fault_latched=true;
-        return 2;
-    }
-    return 1;
+    s_korvo_vsync_count++;
+}
+uint32_t bsp_display_get_vsync_count(void)
+{
+    return s_korvo_vsync_count;
 }
 
 

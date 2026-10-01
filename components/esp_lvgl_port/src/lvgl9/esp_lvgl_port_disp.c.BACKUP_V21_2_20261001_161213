@@ -58,12 +58,6 @@ static const char *TAG = "LVGL";
 extern void bsp_display_notify_vsync_from_isr(void);
 extern void bsp_display_notify_dma_from_isr(void);
 
-static LVGL_PORT_IRAM bool korvo_rgb_vsync_callback(
-        esp_lcd_panel_handle_t panel_io,
-        const esp_lcd_rgb_panel_event_data_t *edata,
-        void *user_ctx);
-
-
 /*******************************************************************************
 * Types definitions
 *******************************************************************************/
