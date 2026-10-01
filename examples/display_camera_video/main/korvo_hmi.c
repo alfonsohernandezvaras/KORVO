@@ -960,11 +960,7 @@ void korvo_hmi_update_bluetooth(const korvo_bluetooth_status_t *bt)
 {
     if (!bt) return;
     bsp_display_lock(0);
-    if(!bt->enabled) v17_color(s_v17_bt,0x202830);
-    else if(bt->audio_connected) v17_color(s_v17_bt,0x008844);
-    else if(bt->slc_connected) v17_color(s_v17_bt,0x0088AA);
-    else if(bt->paired) v17_color(s_v17_bt,0x0055CC);
-    else v17_color(s_v17_bt,0x404080);
+    v17_color(s_v17_bt, bt->enabled ? 0x0066CC : 0x202830);
     bsp_display_unlock();
 
     /* The detailed Bluetooth screen is hidden during normal camera operation.
