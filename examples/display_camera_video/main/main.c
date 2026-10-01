@@ -139,10 +139,16 @@ static uint32_t motion_frame_counter = 0;
 /* Independent SD watchdog: read-only probe every 5 seconds. */
 #define STORAGE_WATCHDOG_POLL_MS             5000
 
+/* V18 display watchdog: VSYNC is the health heartbeat of RGB LCD/DMA. */
+#define DISPLAY_VSYNC_WATCHDOG_POLL_MS        1000
+#define DISPLAY_VSYNC_STALL_TIMEOUT_MS        3000
+#define DISPLAY_VSYNC_RECOVERY_WAIT_MS        1000
+
 static volatile bool korvo_services_enabled = false;
 static volatile uint32_t camera_health_valid_samples = 0;
 static volatile TickType_t camera_last_valid_frame_tick = 0;
 static volatile bool camera_runtime_watchdog_enabled = false;
+static volatile bool display_vsync_watchdog_enabled = false;
 static uint8_t motion_confirm_count = 0;
 static uint8_t motion_clear_count = 0;
 
@@ -692,6 +698,69 @@ static void camera_runtime_watchdog_task(void *arg)
 
 
 
+static void display_vsync_watchdog_task(void *arg)
+{
+    uint32_t last_count = bsp_display_get_vsync_count();
+    TickType_t last_progress_tick = xTaskGetTickCount();
+    bool recovery_in_progress = false;
+
+    ESP_LOGI(TAG, "DISPLAY VSYNC WATCHDOG started: stall=%d ms poll=%d ms",
+             DISPLAY_VSYNC_STALL_TIMEOUT_MS, DISPLAY_VSYNC_WATCHDOG_POLL_MS);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(DISPLAY_VSYNC_WATCHDOG_POLL_MS));
+        if (!display_vsync_watchdog_enabled) continue;
+
+        uint32_t now_count = bsp_display_get_vsync_count();
+        TickType_t now = xTaskGetTickCount();
+
+        if (now_count != last_count) {
+            last_count = now_count;
+            last_progress_tick = now;
+            recovery_in_progress = false;
+            continue;
+        }
+
+        /* Ignore the initial period before the first real VSYNC arrives. */
+        if (now_count == 0) {
+            last_progress_tick = now;
+            continue;
+        }
+
+        uint32_t age_ms = (uint32_t)((now - last_progress_tick) * portTICK_PERIOD_MS);
+        if (age_ms < DISPLAY_VSYNC_STALL_TIMEOUT_MS || recovery_in_progress) continue;
+
+        recovery_in_progress = true;
+        ESP_LOGE(TAG,
+                 "DISPLAY VSYNC WATCHDOG: VSYNC stalled at %lu for %lu ms - requesting RGB restart",
+                 (unsigned long)now_count, (unsigned long)age_ms);
+
+        esp_err_t err = bsp_display_restart_rgb();
+        ESP_LOGW(TAG, "DISPLAY VSYNC WATCHDOG: esp_lcd_rgb_panel_restart -> %s",
+                 esp_err_to_name(err));
+
+        vTaskDelay(pdMS_TO_TICKS(DISPLAY_VSYNC_RECOVERY_WAIT_MS));
+
+        uint32_t after_restart = bsp_display_get_vsync_count();
+        if (after_restart != now_count) {
+            ESP_LOGW(TAG,
+                     "DISPLAY VSYNC WATCHDOG: RGB restart recovered VSYNC (%lu -> %lu)",
+                     (unsigned long)now_count, (unsigned long)after_restart);
+            last_count = after_restart;
+            last_progress_tick = xTaskGetTickCount();
+            recovery_in_progress = false;
+            continue;
+        }
+
+        ESP_LOGE(TAG,
+                 "DISPLAY VSYNC WATCHDOG: recovery failed (still %lu) -> ESP restart",
+                 (unsigned long)after_restart);
+        vTaskDelay(pdMS_TO_TICKS(250));
+        esp_restart();
+    }
+}
+
+
 static void storage_watchdog_task(void *arg)
 {
     bool last_ok = false;
@@ -961,6 +1030,20 @@ void app_main(void)
      * SD runtime watchdog starts after HMI creation so its first sample can
      * immediately populate the upper-right SD card.
      */
+    BaseType_t display_vsync_wd_ret = xTaskCreate(
+        display_vsync_watchdog_task,
+        "display_vsync_wd",
+        4096,
+        NULL,
+        4,
+        NULL
+    );
+    if (display_vsync_wd_ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create display VSYNC watchdog task");
+    } else {
+        display_vsync_watchdog_enabled = true;
+    }
+
     BaseType_t storage_wd_ret = xTaskCreate(
         storage_watchdog_task,
         "sd_watchdog",
