@@ -7,6 +7,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_attr.h"
 #include "bsp_err_check.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
@@ -26,6 +27,19 @@ static lv_display_t *disp;
 static lv_indev_t *disp_indev_touch = NULL;
 #endif // (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
 static bsp_lcd_handles_t disp_handles;
+static volatile uint32_t s_vsync_count = 0;
+
+static bool IRAM_ATTR bsp_display_vsync_cb(esp_lcd_panel_handle_t panel,
+                                            const esp_lcd_rgb_panel_event_data_t *edata,
+                                            void *user_ctx)
+{
+    (void)panel;
+    (void)edata;
+    (void)user_ctx;
+    s_vsync_count++;
+    return false;
+}
+
 static esp_lcd_touch_handle_t tp;   // LCD touch handle
 
 // Bit number used to represent command and parameter
@@ -123,12 +137,32 @@ esp_err_t bsp_display_new_with_handles(const bsp_display_config_t *config, bsp_l
     esp_lcd_panel_swap_xy(ret_handles->panel, false);
     esp_lcd_panel_mirror(ret_handles->panel, false, false);
 
+    s_vsync_count = 0;
+    const esp_lcd_rgb_panel_event_callbacks_t callbacks = {
+        .on_vsync = bsp_display_vsync_cb,
+    };
+    ESP_GOTO_ON_ERROR(esp_lcd_rgb_panel_register_event_callbacks(ret_handles->panel, &callbacks, NULL),
+                      err, TAG, "VSYNC callback registration failed");
+
     ESP_LOGI(TAG, "Display initialized with resolution %dx%d", BSP_LCD_H_RES, BSP_LCD_V_RES);
     return ret;
 
 err:
     bsp_display_delete();
     return ret;
+}
+
+uint32_t bsp_display_get_vsync_count(void)
+{
+    return s_vsync_count;
+}
+
+esp_err_t bsp_display_restart_rgb(void)
+{
+    if (!disp_handles.panel) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_lcd_rgb_panel_restart(disp_handles.panel);
 }
 
 void bsp_display_delete(void)
