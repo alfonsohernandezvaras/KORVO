@@ -30,9 +30,6 @@ static lv_obj_t *s_video_resolution = NULL;
 static lv_obj_t *s_vsync_diag = NULL;
 extern uint32_t bsp_display_get_vsync_count(void);
 
-/* KORVO_V17_8_VISUAL_HMI */
-static lv_obj_t *s_v17_sip = NULL;
-
 static lv_obj_t *s_v17_gateway_btn = NULL;
 static lv_obj_t *s_v17_reader_btn = NULL;
 static lv_obj_t *s_v17_door_btn = NULL;
@@ -480,22 +477,17 @@ void korvo_hmi_init(void)
     lv_obj_set_style_text_align(s_v17_location,LV_TEXT_ALIGN_CENTER,0); lv_obj_set_style_bg_color(s_v17_location,lv_color_black(),0);
     lv_obj_set_style_bg_opa(s_v17_location,LV_OPA_70,0); lv_obj_set_style_pad_all(s_v17_location,6,0);
     lv_obj_align(s_v17_location,LV_ALIGN_TOP_MID,0,6);
-    s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
-    s_v17_sip=v17_make_flag(screen,"SIP",120);
-    s_v17_reader=v17_make_flag(screen,"LECTOR",170);
-    s_v17_door=v17_make_flag(screen,"PUERTA",220);
-    s_v17_sd=v17_make_flag(screen,"SD CARD",270);
-    s_v17_bt=v17_make_flag(screen,"BLUETOOTH",320);
-    lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_v17_bt,bt_open_cb,LV_EVENT_CLICKED,NULL);
-    lv_timer_create(v17_pulse_cb,100,NULL);
+    s_v17_gateway=v17_make_flag(screen,"GATEWAY",72); s_v17_reader=v17_make_flag(screen,"LECTOR",124);
+    s_v17_door=v17_make_flag(screen,"PUERTA",176); s_v17_sd=v17_make_flag(screen,"SD CARD",228);
+    s_v17_bt=v17_make_flag(screen,"BLUETOOTH",280); lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_v17_bt,bt_open_cb,LV_EVENT_CLICKED,NULL); lv_timer_create(v17_pulse_cb,100,NULL);
     s_motion_diag = NULL;
 
-    /* KORVO_V17_8_VISUAL_HMI: SD card */
+    /* KORVO V17.7 SD STATUS CARD REAL */
     s_storage_card = lv_obj_create(screen);
     lv_obj_remove_style_all(s_storage_card);
-    lv_obj_set_size(s_storage_card, 250, 104);
-    lv_obj_set_pos(s_storage_card, 18, 370);
+    lv_obj_set_size(s_storage_card, 190, 48);
+    lv_obj_set_pos(s_storage_card, 18, 332);
     lv_obj_set_style_bg_color(s_storage_card, lv_color_hex(0x202830), 0);
     lv_obj_set_style_bg_opa(s_storage_card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_storage_card, 1, 0);
@@ -504,16 +496,11 @@ void korvo_hmi_init(void)
     lv_obj_clear_flag(s_storage_card, LV_OBJ_FLAG_SCROLLABLE);
 
     s_storage_card_label = lv_label_create(s_storage_card);
-    lv_obj_set_width(s_storage_card_label, 236);
+    lv_obj_set_width(s_storage_card_label, 182);
     lv_obj_set_style_text_color(s_storage_card_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_style_pad_all(s_storage_card_label, 7, 0);
-    lv_label_set_text(s_storage_card_label,
-                      "SD         : --\n"
-                      "SISTEMA    : --\n"
-                      "ESTRUCTURA : --\n"
-                      "USADO      : -- MB\n"
-                      "LIBRE      : -- MB");
+    lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_pad_all(s_storage_card_label, 2, 0);
+    lv_label_set_text(s_storage_card_label, "SD --  FS --  DIR --\nUSADO --  LIBRE --");
     lv_obj_center(s_storage_card_label);
 
     s_storage_diag = s_storage_card;
@@ -543,18 +530,15 @@ void korvo_hmi_init(void)
     lv_obj_set_style_pad_all(s_volume_label, 4, 0);
     lv_obj_align_to(s_volume_label, s_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
     volume_label_update(initial_volume);
-    /* KORVO_V17_8_VISUAL_HMI: compact VSYNC diagnostic */
+    /* KORVO_VSYNC_COUNTER_ONLY */
     s_vsync_diag = lv_label_create(screen);
-    lv_obj_set_width(s_vsync_diag, 122);
+    lv_obj_set_width(s_vsync_diag, 400);
     lv_obj_set_style_text_color(s_vsync_diag, lv_color_white(), 0);
     lv_obj_set_style_text_align(s_vsync_diag, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_bg_color(s_vsync_diag, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_vsync_diag, LV_OPA_70, 0);
-    lv_obj_set_style_border_width(s_vsync_diag, 1, 0);
-    lv_obj_set_style_border_color(s_vsync_diag, lv_color_hex(0x506070), 0);
-    lv_obj_set_style_radius(s_vsync_diag, 5, 0);
-    lv_obj_set_style_pad_all(s_vsync_diag, 3, 0);
-    lv_obj_set_pos(s_vsync_diag, 566, 444);
+    lv_obj_set_style_bg_opa(s_vsync_diag, LV_OPA_60, 0);
+    lv_obj_set_style_pad_all(s_vsync_diag, 2, 0);
+    lv_obj_set_pos(s_vsync_diag, 292, 454);
     lv_label_set_text(s_vsync_diag, "VSYNC: 0");
 
     /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
@@ -898,13 +882,10 @@ void korvo_hmi_update_storage(bool sd_ok,
     unsigned long long free_mb =
         (unsigned long long)(free_bytes / (1024ULL * 1024ULL));
 
-    char card_text[128];
+    char card_text[96];
     snprintf(card_text, sizeof(card_text),
-             "SD         : %s\n"
-             "SISTEMA    : %s\n"
-             "ESTRUCTURA : %s\n"
-             "USADO      : %llu MB\n"
-             "LIBRE      : %llu MB",
+             "SD %s  FS %s  DIR %s\n"
+             "USADO %llu MB  LIBRE %llu MB",
              sd_txt, fs_txt, dir_txt, used_mb, free_mb);
 
     bsp_display_lock(0);

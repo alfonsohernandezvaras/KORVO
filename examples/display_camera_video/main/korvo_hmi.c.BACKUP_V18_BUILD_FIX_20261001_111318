@@ -898,7 +898,7 @@ void korvo_hmi_update_storage(bool sd_ok,
     unsigned long long free_mb =
         (unsigned long long)(free_bytes / (1024ULL * 1024ULL));
 
-    char card_text[128];
+    char card_text[96];
     snprintf(card_text, sizeof(card_text),
              "SD         : %s\n"
              "SISTEMA    : %s\n"
