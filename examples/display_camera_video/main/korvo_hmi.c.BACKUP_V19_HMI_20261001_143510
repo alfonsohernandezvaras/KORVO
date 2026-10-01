@@ -26,7 +26,8 @@ static lv_obj_t *s_volume_label = NULL;
 static lv_obj_t *s_mic_slider = NULL;
 static lv_obj_t *s_mic_label = NULL;
 static lv_obj_t *s_video_resolution = NULL;
-/* KORVO_V19_TOP_VSYNC */
+/* KORVO_VSYNC_COUNTER_ONLY */
+static lv_obj_t *s_vsync_diag = NULL;
 extern uint32_t bsp_display_get_vsync_count(void);
 
 /* KORVO_V17_8_VISUAL_HMI */
@@ -542,9 +543,22 @@ void korvo_hmi_init(void)
     lv_obj_set_style_pad_all(s_volume_label, 4, 0);
     lv_obj_align_to(s_volume_label, s_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
     volume_label_update(initial_volume);
-    /* KORVO_V19: VSYNC moved to top IP/HOST bar. */
+    /* KORVO_V17_8_VISUAL_HMI: compact VSYNC diagnostic */
+    s_vsync_diag = lv_label_create(screen);
+    lv_obj_set_width(s_vsync_diag, 122);
+    lv_obj_set_style_text_color(s_vsync_diag, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_vsync_diag, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(s_vsync_diag, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_vsync_diag, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(s_vsync_diag, 1, 0);
+    lv_obj_set_style_border_color(s_vsync_diag, lv_color_hex(0x506070), 0);
+    lv_obj_set_style_radius(s_vsync_diag, 5, 0);
+    lv_obj_set_style_pad_all(s_vsync_diag, 3, 0);
+    /* KORVO_V18_1_REAL_VSYNC */
+    lv_obj_set_pos(s_vsync_diag, 566, 432);
+    lv_label_set_text(s_vsync_diag, "VSYNC: 0");
 
-/* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
+    /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
     s_mic_slider = lv_slider_create(screen);
     lv_obj_set_size(s_mic_slider, 22, 92);
     lv_obj_align(s_mic_slider, LV_ALIGN_TOP_RIGHT, -24, 115);
@@ -855,6 +869,11 @@ void korvo_hmi_update_motion(uint32_t motion_percent_x10,
 
     bsp_display_lock(0);
     lv_label_set_text(s_motion_diag, text);
+    if (s_vsync_diag) {
+        char vsync_text[40];
+        snprintf(vsync_text, sizeof(vsync_text), "VSYNC: %lu", (unsigned long)bsp_display_get_vsync_count());
+        lv_label_set_text(s_vsync_diag, vsync_text);
+    }
     if (!s_bt_panel_visible) lv_obj_move_foreground(s_motion_diag);
     if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
     bsp_display_unlock();
@@ -1032,11 +1051,10 @@ void korvo_hmi_update_location(const char *ip,const char *host){
     if (!s_v17_location) {
         return;
     }
-    char t[160];
-    snprintf(t, sizeof(t), "IP: %.15s | HOST: %.63s | VSYNC: %lu",
+    char t[128];
+    snprintf(t, sizeof(t), "IP: %.15s | HOST: %.63s",
              (ip && ip[0]) ? ip : "--",
-             (host && host[0]) ? host : "--",
-             (unsigned long)bsp_display_get_vsync_count());
+             (host && host[0]) ? host : "--");
     bsp_display_lock(0);lv_label_set_text(s_v17_location,t);lv_obj_move_foreground(s_v17_location);
     if (s_bt_panel_visible && s_bt_panel) {
         lv_obj_move_foreground(s_bt_panel);
