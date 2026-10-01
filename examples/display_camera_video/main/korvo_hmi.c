@@ -32,10 +32,12 @@ extern uint32_t bsp_display_get_vsync_count(void);
 
 static lv_obj_t *s_v17_gateway_btn = NULL;
 static lv_obj_t *s_v17_reader_btn = NULL;
+static lv_obj_t *s_v17_sip_btn = NULL;
 static lv_obj_t *s_v17_door_btn = NULL;
 static lv_obj_t *s_v17_sd_btn = NULL;
 static lv_obj_t *s_v17_bt_btn = NULL;
-static lv_obj_t *s_v17_location=NULL,*s_v17_gateway=NULL,*s_v17_reader=NULL,*s_v17_door=NULL,*s_v17_sd=NULL,*s_v17_bt=NULL;
+static lv_obj_t *s_v17_location=NULL,*s_v17_gateway=NULL,*s_v17_sip=NULL,*s_v17_reader=NULL,*s_v17_door=NULL,*s_v17_sd=NULL,*s_v17_bt=NULL;
+static lv_obj_t *s_diag_frame = NULL;
 static uint32_t s_v17_reader_until=0,s_v17_door_until=0;
 
 
@@ -427,6 +429,25 @@ static void set_face_state(korvo_hmi_face_state_t state)
     }
 }
 
+static void v18_layout_perf_monitor(void)
+{
+#if defined(LV_USE_PERF_MONITOR) && LV_USE_PERF_MONITOR
+    lv_obj_t *sys = lv_display_get_layer_sys(lv_display_get_default());
+    uint32_t count = lv_obj_get_child_count(sys);
+    for (uint32_t i = 0; i < count; ++i) {
+        lv_obj_t *child = lv_obj_get_child(sys, i);
+        if (lv_obj_check_type(child, &lv_label_class)) {
+            const char *txt = lv_label_get_text(child);
+            if (txt && strstr(txt, "FPS") != NULL) {
+                lv_obj_set_width(child, 112);
+                lv_obj_align(child, LV_ALIGN_BOTTOM_RIGHT, -8, -52);
+                break;
+            }
+        }
+    }
+#endif
+}
+
 void korvo_hmi_init(void)
 {
     lv_obj_t *screen = lv_scr_act();
@@ -468,7 +489,7 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_color(s_message, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_message, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(s_message, 8, 0);
-    lv_obj_set_width(s_message, 400);
+    lv_obj_set_width(s_message, 380);
     lv_obj_set_pos(s_message, 292, 385); /* V17.6 horizontal only */ /* V17.4 */
 
     /* V17 compact layout */
@@ -477,17 +498,17 @@ void korvo_hmi_init(void)
     lv_obj_set_style_text_align(s_v17_location,LV_TEXT_ALIGN_CENTER,0); lv_obj_set_style_bg_color(s_v17_location,lv_color_black(),0);
     lv_obj_set_style_bg_opa(s_v17_location,LV_OPA_70,0); lv_obj_set_style_pad_all(s_v17_location,6,0);
     lv_obj_align(s_v17_location,LV_ALIGN_TOP_MID,0,6);
-    s_v17_gateway=v17_make_flag(screen,"GATEWAY",72); s_v17_reader=v17_make_flag(screen,"LECTOR",124);
-    s_v17_door=v17_make_flag(screen,"PUERTA",176); s_v17_sd=v17_make_flag(screen,"SD CARD",228);
-    s_v17_bt=v17_make_flag(screen,"BLUETOOTH",280); lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
+    s_v17_gateway=v17_make_flag(screen,"GATEWAY",70); s_v17_sip=v17_make_flag(screen,"SIP",120);
+    s_v17_reader=v17_make_flag(screen,"LECTOR",170); s_v17_door=v17_make_flag(screen,"PUERTA",220);
+    s_v17_sd=v17_make_flag(screen,"SD CARD",270); s_v17_bt=v17_make_flag(screen,"BLUETOOTH",320); lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_v17_bt,bt_open_cb,LV_EVENT_CLICKED,NULL); lv_timer_create(v17_pulse_cb,100,NULL);
     s_motion_diag = NULL;
 
     /* KORVO V17.7 SD STATUS CARD REAL */
     s_storage_card = lv_obj_create(screen);
     lv_obj_remove_style_all(s_storage_card);
-    lv_obj_set_size(s_storage_card, 190, 48);
-    lv_obj_set_pos(s_storage_card, 18, 332);
+    lv_obj_set_size(s_storage_card, 250, 104);
+    lv_obj_set_pos(s_storage_card, 18, 370);
     lv_obj_set_style_bg_color(s_storage_card, lv_color_hex(0x202830), 0);
     lv_obj_set_style_bg_opa(s_storage_card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_storage_card, 1, 0);
@@ -496,11 +517,16 @@ void korvo_hmi_init(void)
     lv_obj_clear_flag(s_storage_card, LV_OBJ_FLAG_SCROLLABLE);
 
     s_storage_card_label = lv_label_create(s_storage_card);
-    lv_obj_set_width(s_storage_card_label, 182);
+    lv_obj_set_width(s_storage_card_label, 236);
     lv_obj_set_style_text_color(s_storage_card_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_pad_all(s_storage_card_label, 2, 0);
-    lv_label_set_text(s_storage_card_label, "SD --  FS --  DIR --\nUSADO --  LIBRE --");
+    lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_pad_all(s_storage_card_label, 7, 0);
+    lv_label_set_text(s_storage_card_label,
+                      "SD         : --\n"
+                      "SISTEMA    : --\n"
+                      "ESTRUCTURA : --\n"
+                      "USADO      : -- MB\n"
+                      "LIBRE      : -- MB");
     lv_obj_center(s_storage_card_label);
 
     s_storage_diag = s_storage_card;
@@ -530,16 +556,27 @@ void korvo_hmi_init(void)
     lv_obj_set_style_pad_all(s_volume_label, 4, 0);
     lv_obj_align_to(s_volume_label, s_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
     volume_label_update(initial_volume);
-    /* KORVO_VSYNC_COUNTER_ONLY */
+    /* V18: compact diagnostics frame at bottom-right. The LVGL sysmon
+     * remains the FPS/CPU source; VSYNC is added to the same visual card. */
+    s_diag_frame = lv_obj_create(screen);
+    lv_obj_remove_style_all(s_diag_frame);
+    lv_obj_set_size(s_diag_frame, 112, 88);
+    lv_obj_set_pos(s_diag_frame, 680, 386);
+    lv_obj_set_style_bg_color(s_diag_frame, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_diag_frame, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(s_diag_frame, 1, 0);
+    lv_obj_set_style_border_color(s_diag_frame, lv_color_hex(0x506070), 0);
+    lv_obj_set_style_radius(s_diag_frame, 4, 0);
+    lv_obj_clear_flag(s_diag_frame, LV_OBJ_FLAG_SCROLLABLE);
+
     s_vsync_diag = lv_label_create(screen);
-    lv_obj_set_width(s_vsync_diag, 400);
+    lv_obj_set_width(s_vsync_diag, 108);
     lv_obj_set_style_text_color(s_vsync_diag, lv_color_white(), 0);
     lv_obj_set_style_text_align(s_vsync_diag, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_bg_color(s_vsync_diag, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_vsync_diag, LV_OPA_60, 0);
     lv_obj_set_style_pad_all(s_vsync_diag, 2, 0);
-    lv_obj_set_pos(s_vsync_diag, 292, 454);
+    lv_obj_set_pos(s_vsync_diag, 682, 446);
     lv_label_set_text(s_vsync_diag, "VSYNC: 0");
+    v18_layout_perf_monitor();
 
     /* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
     s_mic_slider = lv_slider_create(screen);
@@ -884,8 +921,11 @@ void korvo_hmi_update_storage(bool sd_ok,
 
     char card_text[96];
     snprintf(card_text, sizeof(card_text),
-             "SD %s  FS %s  DIR %s\n"
-             "USADO %llu MB  LIBRE %llu MB",
+             "SD         : %s\n"
+             "SISTEMA    : %s\n"
+             "ESTRUCTURA : %s\n"
+             "USADO      : %llu MB\n"
+             "LIBRE      : %llu MB",
              sd_txt, fs_txt, dir_txt, used_mb, free_mb);
 
     bsp_display_lock(0);
@@ -1019,9 +1059,10 @@ void korvo_hmi_update_gateway_status(const char *room,const char *gateway_name,b
  bool sip_registered,const char *sip_state,bool bt_enabled,bool bt_paired,bool bt_connected,const char *bt_peer)
 {
     (void)room;(void)gateway_name;(void)control_ok;(void)sip_registered;(void)sip_state;(void)bt_peer;
-    bsp_display_lock(0); v17_color(s_v17_gateway,gateway_ok?0x0066CC:0x202830);
-    if(!bt_enabled)v17_color(s_v17_bt,0x202830); else if(bt_connected)v17_color(s_v17_bt,0x0088AA);
-    else if(bt_paired)v17_color(s_v17_bt,0x0055CC); else v17_color(s_v17_bt,0x404080);
+    bsp_display_lock(0);
+    v17_color(s_v17_gateway, gateway_ok ? 0x0066CC : 0x202830);
+    v17_color(s_v17_sip, sip_registered ? 0x0066CC : 0x202830);
+    v17_color(s_v17_bt, bt_enabled ? 0x0066CC : 0x202830);
     if (s_bt_panel_visible && s_bt_panel) {
         lv_obj_move_foreground(s_bt_panel);
     }
