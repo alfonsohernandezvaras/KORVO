@@ -127,6 +127,10 @@ void bsp_display_delete(void);
  */
 esp_err_t bsp_display_brightness_init(void);
 
+/** KORVO V18: RGB LCD VSYNC diagnostics/recovery. */
+uint32_t bsp_display_get_vsync_count(void);
+esp_err_t bsp_display_restart_rgb(void);
+
 /**
  * @brief Deinitialize display's brightness
  *
