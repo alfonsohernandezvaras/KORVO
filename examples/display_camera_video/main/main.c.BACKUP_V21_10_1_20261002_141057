@@ -1083,13 +1083,7 @@ void app_main(void)
     }#else
     /* V21.8: no radio/network task is allowed to start. */
     ESP_LOGW(TAG, "====================================================");
-    ESP_LOGW(TAG, "V21.10.1 WIFI QUIET: starting STA only");
-    esp_err_t wifi_quiet_err = korvo_network_init();
-    if (wifi_quiet_err != ESP_OK) {
-        ESP_LOGE(TAG, "V21.10.1 WiFi init failed: %s", esp_err_to_name(wifi_quiet_err));
-    } else {
-        ESP_LOGW(TAG, "V21.10.1: WiFi STA ON; Gateway/SIP/Web/BT OFF");
-    }
+    ESP_LOGW(TAG, "V21.8 RADIO QUIET: WiFi/BT/SIP/Gateway/Web = OFF");
     ESP_LOGW(TAG, "V21.8 RADIO QUIET: no radio/network supervisor task");
     ESP_LOGW(TAG, "V21.8 RADIO QUIET: LCD/Touch/HMI/Camera/SD = ON");
     ESP_LOGW(TAG, "V21.8 RADIO QUIET: USB HID mouse = ON");

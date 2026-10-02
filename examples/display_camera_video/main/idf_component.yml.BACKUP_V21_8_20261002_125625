@@ -10,4 +10,3 @@ dependencies:
     version: '^1.8.0'
   espressif/cjson:
     version: '^1.7.19'
-  usb_host_hid: '^1'

@@ -31,7 +31,6 @@ extern uint32_t bsp_display_get_vsync_count(void);
 extern uint32_t bsp_display_get_dma_count(void);
 extern uint32_t bsp_display_get_health_state(void);
 extern uint32_t bsp_display_get_fault_count(void);
-extern esp_err_t bsp_display_manual_resync(void);
 
 /* KORVO_V17_8_VISUAL_HMI */
 static lv_obj_t *s_v17_sip = NULL;
@@ -64,18 +63,6 @@ static lv_obj_t *s_bt_device_btn[KORVO_BT_SCAN_MAX] = {0};
 static lv_obj_t *s_bt_device_btn_label[KORVO_BT_SCAN_MAX] = {0};
 static char s_bt_device_mac[KORVO_BT_SCAN_MAX][KORVO_BT_MAC_MAX] = {{0}};
 static volatile bool s_bt_panel_visible = false;
-/* KORVO V21.15 - WIFI CLONE OF BLUETOOTH OVERLAY */
-static lv_obj_t *s_wifi_panel = NULL;
-static lv_obj_t *s_wifi_status_label = NULL;
-static lv_obj_t *s_wifi_host = NULL;
-static lv_obj_t *s_wifi_ssid = NULL;
-static lv_obj_t *s_wifi_pass = NULL;
-static lv_obj_t *s_wifi_ip = NULL;
-static lv_obj_t *s_wifi_mask = NULL;
-static lv_obj_t *s_wifi_gw = NULL;
-static lv_obj_t *s_wifi_iogw = NULL;
-static lv_obj_t *s_wifi_keyboard = NULL;
-static volatile bool s_wifi_panel_visible = false;
 
 static bool s_awake = false;
 static korvo_hmi_face_state_t s_face_state = KORVO_HMI_FACE_NONE;
@@ -123,33 +110,6 @@ typedef struct {
 
 static face_track_t s_track = {0};
 
-
-/* V21.9 CLEAN INPUT: appliance HMI must never be draggable/scrollable. */
-static void korvo_lock_object_tree_no_scroll(lv_obj_t *obj)
-{
-    if (!obj) return;
-    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-#ifdef LV_OBJ_FLAG_SCROLL_CHAIN_HOR
-    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
-#endif
-#ifdef LV_OBJ_FLAG_SCROLL_CHAIN_VER
-    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-#endif
-#ifdef LV_OBJ_FLAG_GESTURE_BUBBLE
-    lv_obj_clear_flag(obj, LV_OBJ_FLAG_GESTURE_BUBBLE);
-#endif
-    uint32_t n = lv_obj_get_child_count(obj);
-    for (uint32_t i = 0; i < n; ++i) korvo_lock_object_tree_no_scroll(lv_obj_get_child(obj, i));
-}
-static void korvo_lock_hmi_no_scroll(void)
-{
-    lv_obj_t *scr = lv_screen_active();
-    if (!scr) return;
-    korvo_lock_object_tree_no_scroll(scr);
-    lv_obj_scroll_to(scr, 0, 0, LV_ANIM_OFF);
-    ESP_LOGW(TAG, "V21.9 HMI LOCK: scroll/drag movement disabled");
-}
-
 static lv_obj_t *make_touch_button(lv_obj_t *parent, const char *text,
                                    int width, int height, lv_obj_t **label_out)
 {
@@ -173,73 +133,23 @@ static lv_obj_t *make_touch_button(lv_obj_t *parent, const char *text,
 }
 
 
+/* V13 lightweight system diagnostics; refresh max 1 Hz. */
 
-/* V21.15.1 BUILD FIX: V17 helpers preserved */
-static void v17_color(lv_obj_t *o, uint32_t c);
-static lv_obj_t *v17_make_flag(lv_obj_t *parent, const char *txt, int x);
 
-static void v17_color(lv_obj_t *o, uint32_t c)
-{
-    if (!o) return;
-    lv_obj_set_style_bg_color(o, lv_color_hex(c), 0);
+
+
+static lv_obj_t *v17_make_flag(lv_obj_t *p,const char *txt,int y){
+    lv_obj_t *o=lv_obj_create(p); lv_obj_remove_style_all(o); lv_obj_set_pos(o,18,y); lv_obj_set_size(o,190,46);
+    lv_obj_set_style_bg_color(o,lv_color_hex(0x202830),0); lv_obj_set_style_bg_opa(o,LV_OPA_COVER,0);
+    lv_obj_set_style_border_width(o,1,0); lv_obj_set_style_border_color(o,lv_color_hex(0x506070),0);
+    lv_obj_set_style_radius(o,8,0); lv_obj_clear_flag(o,LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *l=lv_label_create(o); lv_label_set_text(l,txt); lv_obj_set_style_text_color(l,lv_color_white(),0); lv_obj_center(l); return o;
 }
-
-static lv_obj_t *v17_make_flag(lv_obj_t *parent, const char *txt, int x)
-{
-    lv_obj_t *b = lv_obj_create(parent);
-    lv_obj_set_size(b, 46, 22);
-    lv_obj_set_pos(b, x, 4);
-    lv_obj_set_style_radius(b, 4, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(0x202830), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(b, 0, 0);
-    lv_obj_set_style_pad_all(b, 2, 0);
-    lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *l = lv_label_create(b);
-    lv_label_set_text(l, txt);
-    lv_obj_set_style_text_color(l, lv_color_white(), 0);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-    lv_obj_center(l);
-    return b;
-}
+static void v17_color(lv_obj_t *o,uint32_t c){if(o)lv_obj_set_style_bg_color(o,lv_color_hex(c),0);}
 static void v17_pulse_cb(lv_timer_t *t){(void)t;uint32_t n=lv_tick_get();
     if(s_v17_reader_until && n>=s_v17_reader_until){s_v17_reader_until=0;v17_color(s_v17_reader,0x202830);}
     if(s_v17_door_until && n>=s_v17_door_until){s_v17_door_until=0;v17_color(s_v17_door,0x202830);}
 }
-
-/* KORVO_V21_4_MANUAL_DISPLAY_RESYNC
- * Long press on the top status card.  The touch geometry remains logical
- * even when the RGB image is visually shifted.
- */
-static void v21_display_resync_long_cb(lv_event_t *e)
-{
-    (void)e;
-    ESP_LOGW(TAG, "TOP CARD LONG PRESS -> DISPLAY RESYNC");
-
-    if (s_v17_location) {
-        lv_label_set_text(s_v17_location, "DISPLAY RESYNC...");
-    }
-
-    esp_err_t err = bsp_display_manual_resync();
-
-    if (err == ESP_OK) {
-        ESP_LOGW(TAG, "TOP CARD DISPLAY RESYNC completed");
-    } else {
-        ESP_LOGE(TAG, "TOP CARD DISPLAY RESYNC failed: %s", esp_err_to_name(err));
-    }
-
-    /* Force LVGL to repaint after the RGB engine was reinitialized. */
-    lv_obj_invalidate(lv_screen_active());
-}
-
-/* KORVO_V21_6_LCD_FORENSICS
- * Short touch = snapshot the REAL RGB framebuffer(s) to SD.
- * Hold 5 seconds = execute the already validated manual display resync.
- * We decide on RELEASE so a 5-second hold can never also create a capture.
- */
-static uint32_t s_v21_6_top_press_ms = 0;
-static uint32_t s_v21_6_capture_id = 0;
 
 static void bt_local_set_error(const char *text)
 {
@@ -370,143 +280,6 @@ static void bt_device_cb(lv_event_t *e)
     }
 }
 
-
-static void wifi15_force_front(void)
-{
-    if (!s_wifi_panel_visible || !s_wifi_panel) return;
-    lv_obj_move_foreground(s_wifi_panel);
-    if (s_wifi_keyboard && !lv_obj_has_flag(s_wifi_keyboard, LV_OBJ_FLAG_HIDDEN)) {
-        lv_obj_move_foreground(s_wifi_keyboard);
-    }
-}
-
-static void wifi15_open_cb(lv_event_t *e)
-{
-    (void)e;
-    if (!s_wifi_panel) return;
-    s_wifi_panel_visible = true;
-    lv_obj_clear_flag(s_wifi_panel, LV_OBJ_FLAG_HIDDEN);
-    wifi15_force_front();
-}
-
-static void wifi15_back_cb(lv_event_t *e)
-{
-    (void)e;
-    if (s_wifi_keyboard) {
-        lv_keyboard_set_textarea(s_wifi_keyboard, NULL);
-        lv_obj_add_flag(s_wifi_keyboard, LV_OBJ_FLAG_HIDDEN);
-    }
-    s_wifi_panel_visible = false;
-    if (s_wifi_panel) lv_obj_add_flag(s_wifi_panel, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void wifi15_keyboard_close_cb(lv_event_t *e)
-{
-    (void)e;
-    if (!s_wifi_keyboard) return;
-    lv_keyboard_set_textarea(s_wifi_keyboard, NULL);
-    lv_obj_add_flag(s_wifi_keyboard, LV_OBJ_FLAG_HIDDEN);
-    wifi15_force_front();
-}
-
-static void wifi15_field_cb(lv_event_t *e)
-{
-    lv_obj_t *ta = lv_event_get_target(e);
-    if (!s_wifi_keyboard) return;
-    lv_keyboard_set_textarea(s_wifi_keyboard, ta);
-    if (ta == s_wifi_ip || ta == s_wifi_mask || ta == s_wifi_gw || ta == s_wifi_iogw) {
-        lv_keyboard_set_mode(s_wifi_keyboard, LV_KEYBOARD_MODE_NUMBER);
-    } else {
-        lv_keyboard_set_mode(s_wifi_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-    }
-    lv_obj_clear_flag(s_wifi_keyboard, LV_OBJ_FLAG_HIDDEN);
-    wifi15_force_front();
-}
-
-static lv_obj_t *wifi15_field(lv_obj_t *parent, const char *name, const char *value,
-                              int x, int y, int width, bool password)
-{
-    lv_obj_t *lab = lv_label_create(parent);
-    lv_label_set_text(lab, name);
-    lv_obj_set_style_text_color(lab, lv_color_white(), 0);
-    lv_obj_set_pos(lab, x, y + 9);
-
-    lv_obj_t *ta = lv_textarea_create(parent);
-    lv_obj_set_pos(ta, x + 112, y);
-    lv_obj_set_size(ta, width, 40);
-    lv_textarea_set_one_line(ta, true);
-    lv_textarea_set_text(ta, value);
-    lv_textarea_set_password_mode(ta, password);
-    lv_obj_clear_flag(ta, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(ta, wifi15_field_cb, LV_EVENT_CLICKED, NULL);
-    return ta;
-}
-
-static void wifi15_save_cb(lv_event_t *e)
-{
-    (void)e;
-    ESP_LOGI(TAG, "WIFI cfg host=%s ssid=%s ip=%s mask=%s gw=%s iogw=%s",
-             lv_textarea_get_text(s_wifi_host),
-             lv_textarea_get_text(s_wifi_ssid),
-             lv_textarea_get_text(s_wifi_ip),
-             lv_textarea_get_text(s_wifi_mask),
-             lv_textarea_get_text(s_wifi_gw),
-             lv_textarea_get_text(s_wifi_iogw));
-    if (s_wifi_status_label) lv_label_set_text(s_wifi_status_label, "CONFIGURACION LISTA");
-    wifi15_force_front();
-}
-
-static void build_wifi_panel(lv_obj_t *screen)
-{
-    /* Deliberadamente replica la construccion del Bluetooth overlay. */
-    s_wifi_panel = lv_obj_create(screen);
-    lv_obj_remove_style_all(s_wifi_panel);
-    lv_obj_set_pos(s_wifi_panel, 0, 0);
-    lv_obj_set_size(s_wifi_panel, BSP_LCD_H_RES, BSP_LCD_V_RES);
-    lv_obj_set_style_bg_color(s_wifi_panel, lv_color_hex(0x101820), 0);
-    lv_obj_set_style_bg_opa(s_wifi_panel, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(s_wifi_panel, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *back = make_touch_button(s_wifi_panel, "< CAMARA", 110, 40, NULL);
-    lv_obj_align(back, LV_ALIGN_TOP_LEFT, 8, 8);
-    lv_obj_add_event_cb(back, wifi15_back_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *title = lv_label_create(s_wifi_panel);
-    lv_label_set_text(title, "CONFIGURACION WI-FI");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
-
-    s_wifi_status_label = lv_label_create(s_wifi_panel);
-    lv_label_set_text(s_wifi_status_label, "Wi-Fi AUTO: KORVO ROUTER");
-    lv_obj_set_width(s_wifi_status_label, BSP_LCD_H_RES - 24);
-    lv_obj_set_style_text_color(s_wifi_status_label, lv_color_white(), 0);
-    lv_obj_set_style_bg_color(s_wifi_status_label, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_wifi_status_label, LV_OPA_40, 0);
-    lv_obj_set_style_pad_all(s_wifi_status_label, 6, 0);
-    lv_obj_align(s_wifi_status_label, LV_ALIGN_TOP_MID, 0, 56);
-
-    s_wifi_host = wifi15_field(s_wifi_panel, "HOST", "KORVO-01", 18, 105, 245, false);
-    s_wifi_ssid = wifi15_field(s_wifi_panel, "SSID", "KORVO ROUTER", 405, 105, 245, false);
-    s_wifi_pass = wifi15_field(s_wifi_panel, "CLAVE", "Sill123123", 18, 158, 245, true);
-    s_wifi_ip = wifi15_field(s_wifi_panel, "IP KORVO", "192.168.10.50", 405, 158, 245, false);
-    s_wifi_mask = wifi15_field(s_wifi_panel, "MASCARA", "255.255.255.0", 18, 211, 245, false);
-    s_wifi_gw = wifi15_field(s_wifi_panel, "GW LAN", "192.168.10.1", 405, 211, 245, false);
-    s_wifi_iogw = wifi15_field(s_wifi_panel, "GW I/O", "192.168.10.51", 18, 264, 245, false);
-
-    lv_obj_t *save = make_touch_button(s_wifi_panel, "GUARDAR Y CONECTAR", 220, 44, NULL);
-    lv_obj_align(save, LV_ALIGN_BOTTOM_MID, 0, -14);
-    lv_obj_add_event_cb(save, wifi15_save_cb, LV_EVENT_CLICKED, NULL);
-
-    s_wifi_keyboard = lv_keyboard_create(screen);
-    lv_obj_set_size(s_wifi_keyboard, BSP_LCD_H_RES, 205);
-    lv_obj_align(s_wifi_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_clear_flag(s_wifi_keyboard, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(s_wifi_keyboard, wifi15_keyboard_close_cb, LV_EVENT_READY, NULL);
-    lv_obj_add_event_cb(s_wifi_keyboard, wifi15_keyboard_close_cb, LV_EVENT_CANCEL, NULL);
-    lv_obj_add_flag(s_wifi_keyboard, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_add_flag(s_wifi_panel, LV_OBJ_FLAG_HIDDEN);
-}
 static void build_bluetooth_panel(lv_obj_t *screen)
 {
     s_bt_panel = lv_obj_create(screen);
@@ -705,13 +478,11 @@ void korvo_hmi_init(void)
 
     /* V17 compact layout */
     s_v17_location=lv_label_create(screen); lv_label_set_text(s_v17_location,"IP: -- | HOST: --");
-    lv_obj_set_width(s_v17_location,760); lv_obj_set_style_text_color(s_v17_location,lv_color_white(),0);
+    lv_obj_set_width(s_v17_location,430); lv_obj_set_style_text_color(s_v17_location,lv_color_white(),0);
     lv_obj_set_style_text_align(s_v17_location,LV_TEXT_ALIGN_CENTER,0); lv_obj_set_style_bg_color(s_v17_location,lv_color_black(),0);
     lv_obj_set_style_bg_opa(s_v17_location,LV_OPA_70,0); lv_obj_set_style_pad_all(s_v17_location,6,0);
     lv_obj_align(s_v17_location,LV_ALIGN_TOP_MID,0,6);
-    lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
-s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
+    s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
     s_v17_sip=v17_make_flag(screen,"SIP",120);
     s_v17_reader=v17_make_flag(screen,"LECTOR",170);
     s_v17_door=v17_make_flag(screen,"PUERTA",220);
@@ -799,14 +570,6 @@ s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
     mic_label_update(initial_mic);
     /* V17 Bluetooth panel opens from BLUETOOTH flag. */
 build_bluetooth_panel(screen);
-    build_wifi_panel(screen);
-    lv_obj_t *wifi15_btn = make_touch_button(screen, "Wi-Fi", 76, 34, NULL);
-    lv_obj_align(wifi15_btn, LV_ALIGN_TOP_LEFT, 8, 8);
-    lv_obj_add_event_cb(wifi15_btn, wifi15_open_cb, LV_EVENT_CLICKED, NULL);
-    /* V21.9_1_LOCK_APPLIED */
-    korvo_lock_hmi_no_scroll();
-    /* V21.9_LOCK_APPLIED */
-    korvo_lock_hmi_no_scroll();
 
     /* V1.3.19: visual screensaver removed. Camera/motion/watchdog chain remains untouched. */
 
@@ -933,7 +696,7 @@ void korvo_hmi_track_face(const face_detection_t *face,
     if (s_motion_diag != NULL) {
         lv_obj_move_foreground(s_motion_diag);
     }
-    if (s_storage_diag != NULL && !s_wifi_panel_visible && !s_bt_panel_visible) {
+    if (s_storage_diag != NULL) {
         lv_obj_move_foreground(s_storage_diag);
     }
     if (s_gateway_footer != NULL && !s_bt_panel_visible) {
@@ -947,12 +710,7 @@ void korvo_hmi_track_face(const face_detection_t *face,
     }
     if (s_mic_slider != NULL && !s_bt_panel_visible) lv_obj_move_foreground(s_mic_slider);
     if (s_mic_label != NULL && !s_bt_panel_visible) lv_obj_move_foreground(s_mic_label);
-    /* V21.14: active configuration overlay owns the screen.
-     * MAIN cards (including SD/storage diagnostics) may update their data,
-     * but they are never allowed to remain above Wi-Fi/Bluetooth. */
-    if (s_wifi_panel_visible && s_wifi_panel != NULL) {
-        wifi15_force_front();
-    } else if (s_bt_panel_visible && s_bt_panel != NULL) {
+    if (s_bt_panel_visible && s_bt_panel != NULL) {
         lv_obj_move_foreground(s_bt_panel);
     }
 

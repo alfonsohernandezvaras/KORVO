@@ -252,6 +252,190 @@ static void korvo_bmp_put_u32(FILE *f, uint32_t v)
     fwrite(b, 1, sizeof(b), f);
 }
 
+static esp_err_t korvo_save_rgb565_bmp(const char *path, const uint16_t *fb)
+{
+    if (!path || !fb) return ESP_ERR_INVALID_ARG;
+
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "LCD CAPTURE: fopen failed %s errno=%d", path, errno);
+        return ESP_FAIL;
+    }
+
+    const uint32_t w = BSP_LCD_H_RES;
+    const uint32_t h = BSP_LCD_V_RES;
+    const uint32_t row_bytes = (w * 3U + 3U) & ~3U;
+    const uint32_t pixel_bytes = row_bytes * h;
+    const uint32_t file_bytes = 54U + pixel_bytes;
+
+    /* BITMAPFILEHEADER */
+    fwrite("BM", 1, 2, f);
+    korvo_bmp_put_u32(f, file_bytes);
+    korvo_bmp_put_u16(f, 0);
+    korvo_bmp_put_u16(f, 0);
+    korvo_bmp_put_u32(f, 54);
+
+    /* BITMAPINFOHEADER: 24-bit BGR, uncompressed */
+    korvo_bmp_put_u32(f, 40);
+    korvo_bmp_put_u32(f, w);
+    korvo_bmp_put_u32(f, h);
+    korvo_bmp_put_u16(f, 1);
+    korvo_bmp_put_u16(f, 24);
+    korvo_bmp_put_u32(f, 0);
+    korvo_bmp_put_u32(f, pixel_bytes);
+    korvo_bmp_put_u32(f, 2835);
+    korvo_bmp_put_u32(f, 2835);
+    korvo_bmp_put_u32(f, 0);
+    korvo_bmp_put_u32(f, 0);
+
+    uint8_t row[BSP_LCD_H_RES * 3 + 4];
+    for (int y = BSP_LCD_V_RES - 1; y >= 0; --y) {
+        uint8_t *p = row;
+        const uint16_t *src = fb + ((size_t)y * BSP_LCD_H_RES);
+        for (int x = 0; x < BSP_LCD_H_RES; ++x) {
+            uint16_t c = src[x];
+            uint8_t r5 = (uint8_t)((c >> 11) & 0x1f);
+            uint8_t g6 = (uint8_t)((c >> 5) & 0x3f);
+            uint8_t b5 = (uint8_t)(c & 0x1f);
+            *p++ = (uint8_t)((b5 << 3) | (b5 >> 2));
+            *p++ = (uint8_t)((g6 << 2) | (g6 >> 4));
+            *p++ = (uint8_t)((r5 << 3) | (r5 >> 2));
+        }
+        while ((size_t)(p - row) < row_bytes) *p++ = 0;
+        if (fwrite(row, 1, row_bytes, f) != row_bytes) {
+            fclose(f);
+            ESP_LOGE(TAG, "LCD CAPTURE: write failed %s", path);
+            return ESP_FAIL;
+        }
+    }
+
+    fflush(f);
+    fclose(f);
+    return ESP_OK;
+}
+
+
+/* KORVO_V21_7_RAW_LCD_SNAPSHOT
+ * Fast forensic snapshot:
+ *  1) memcpy the REAL RGB565 framebuffer into a PSRAM snapshot
+ *  2) release the live framebuffer immediately
+ *  3) write the frozen bytes to SD as RAW
+ *
+ * No RGB565->RGB888 conversion. No BMP generation on the KORVO.
+ */
+#define KORVO_LCD_CAPTURE_DIR "/sdcard/korvo/temp/lcd_debug"
+#define KORVO_LCD_RAW_BYTES ((size_t)BSP_LCD_H_RES * (size_t)BSP_LCD_V_RES * 2U)
+
+static esp_err_t korvo_write_raw_snapshot(const char *path, const void *src, size_t bytes)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "LCD RAW: fopen failed path=%s errno=%d", path, errno);
+        return ESP_FAIL;
+    }
+
+    const uint8_t *p = (const uint8_t *)src;
+    size_t total = 0;
+    while (total < bytes) {
+        size_t chunk = bytes - total;
+        if (chunk > 32768U) chunk = 32768U;
+
+        size_t n = fwrite(p + total, 1, chunk, f);
+        total += n;
+
+        if (n != chunk) {
+            ESP_LOGE(TAG,
+                     "LCD RAW: WRITE FAIL expected=%u written=%u last=%u errno=%d ferror=%d",
+                     (unsigned)bytes, (unsigned)total, (unsigned)n, errno, ferror(f));
+            fclose(f);
+            return ESP_FAIL;
+        }
+    }
+
+    if (fflush(f) != 0) {
+        ESP_LOGE(TAG, "LCD RAW: fflush failed errno=%d", errno);
+        fclose(f);
+        return ESP_FAIL;
+    }
+
+    long final_pos = ftell(f);
+    if (fclose(f) != 0) {
+        ESP_LOGE(TAG, "LCD RAW: fclose failed errno=%d", errno);
+        return ESP_FAIL;
+    }
+
+    if (final_pos != (long)bytes) {
+        ESP_LOGE(TAG, "LCD RAW: SIZE FAIL expected=%u ftell=%ld",
+                 (unsigned)bytes, final_pos);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGW(TAG, "LCD RAW: WRITE OK bytes=%u", (unsigned)bytes);
+    return ESP_OK;
+}
+
+esp_err_t bsp_display_capture_framebuffers_raw(uint32_t capture_id)
+{
+    if (!disp_handles.panel) return ESP_ERR_INVALID_STATE;
+
+    if (mkdir(KORVO_LCD_CAPTURE_DIR, 0775) != 0 && errno != EEXIST) {
+        ESP_LOGE(TAG, "LCD RAW: mkdir failed %s errno=%d",
+                 KORVO_LCD_CAPTURE_DIR, errno);
+        return ESP_FAIL;
+    }
+
+    void *fb0 = NULL;
+#if CONFIG_BSP_LCD_RGB_BUFFER_NUMS >= 2
+    void *fb1 = NULL;
+    esp_err_t err = esp_lcd_rgb_panel_get_frame_buffer(disp_handles.panel, 2, &fb0, &fb1);
+#else
+    esp_err_t err = esp_lcd_rgb_panel_get_frame_buffer(disp_handles.panel, 1, &fb0);
+#endif
+    if (err != ESP_OK || !fb0) {
+        ESP_LOGE(TAG, "LCD RAW: get framebuffer failed: %s",
+                 esp_err_to_name(err));
+        return (err == ESP_OK) ? ESP_FAIL : err;
+    }
+
+    void *snap = heap_caps_malloc(KORVO_LCD_RAW_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!snap) {
+        ESP_LOGE(TAG, "LCD RAW: cannot allocate %u-byte PSRAM snapshot",
+                 (unsigned)KORVO_LCD_RAW_BYTES);
+        return ESP_ERR_NO_MEM;
+    }
+
+    char path[128];
+
+    /* Freeze FB0 quickly, then write the frozen copy. */
+    memcpy(snap, fb0, KORVO_LCD_RAW_BYTES);
+    snprintf(path, sizeof(path), KORVO_LCD_CAPTURE_DIR "/LCD_%05lu_FB0.rgb565",
+             (unsigned long)capture_id);
+    ESP_LOGW(TAG, "LCD RAW #%lu FB0 snapshot -> %s expected=%u",
+             (unsigned long)capture_id, path, (unsigned)KORVO_LCD_RAW_BYTES);
+    err = korvo_write_raw_snapshot(path, snap, KORVO_LCD_RAW_BYTES);
+    if (err != ESP_OK) {
+        heap_caps_free(snap);
+        return err;
+    }
+
+#if CONFIG_BSP_LCD_RGB_BUFFER_NUMS >= 2
+    if (fb1) {
+        memcpy(snap, fb1, KORVO_LCD_RAW_BYTES);
+        snprintf(path, sizeof(path), KORVO_LCD_CAPTURE_DIR "/LCD_%05lu_FB1.rgb565",
+                 (unsigned long)capture_id);
+        ESP_LOGW(TAG, "LCD RAW #%lu FB1 snapshot -> %s expected=%u",
+                 (unsigned long)capture_id, path, (unsigned)KORVO_LCD_RAW_BYTES);
+        err = korvo_write_raw_snapshot(path, snap, KORVO_LCD_RAW_BYTES);
+        if (err != ESP_OK) {
+            heap_caps_free(snap);
+            return err;
+        }
+    }
+#endif
+
+    heap_caps_free(snap);
+    return ESP_OK;
+}
 void bsp_display_delete(void)
 {
     if (disp_handles.panel) {

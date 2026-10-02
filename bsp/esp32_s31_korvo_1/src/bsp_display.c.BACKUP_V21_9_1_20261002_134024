@@ -252,6 +252,69 @@ static void korvo_bmp_put_u32(FILE *f, uint32_t v)
     fwrite(b, 1, sizeof(b), f);
 }
 
+static esp_err_t korvo_save_rgb565_bmp(const char *path, const uint16_t *fb)
+{
+    if (!path || !fb) return ESP_ERR_INVALID_ARG;
+
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "LCD CAPTURE: fopen failed %s errno=%d", path, errno);
+        return ESP_FAIL;
+    }
+
+    const uint32_t w = BSP_LCD_H_RES;
+    const uint32_t h = BSP_LCD_V_RES;
+    const uint32_t row_bytes = (w * 3U + 3U) & ~3U;
+    const uint32_t pixel_bytes = row_bytes * h;
+    const uint32_t file_bytes = 54U + pixel_bytes;
+
+    /* BITMAPFILEHEADER */
+    fwrite("BM", 1, 2, f);
+    korvo_bmp_put_u32(f, file_bytes);
+    korvo_bmp_put_u16(f, 0);
+    korvo_bmp_put_u16(f, 0);
+    korvo_bmp_put_u32(f, 54);
+
+    /* BITMAPINFOHEADER: 24-bit BGR, uncompressed */
+    korvo_bmp_put_u32(f, 40);
+    korvo_bmp_put_u32(f, w);
+    korvo_bmp_put_u32(f, h);
+    korvo_bmp_put_u16(f, 1);
+    korvo_bmp_put_u16(f, 24);
+    korvo_bmp_put_u32(f, 0);
+    korvo_bmp_put_u32(f, pixel_bytes);
+    korvo_bmp_put_u32(f, 2835);
+    korvo_bmp_put_u32(f, 2835);
+    korvo_bmp_put_u32(f, 0);
+    korvo_bmp_put_u32(f, 0);
+
+    uint8_t row[BSP_LCD_H_RES * 3 + 4];
+    for (int y = BSP_LCD_V_RES - 1; y >= 0; --y) {
+        uint8_t *p = row;
+        const uint16_t *src = fb + ((size_t)y * BSP_LCD_H_RES);
+        for (int x = 0; x < BSP_LCD_H_RES; ++x) {
+            uint16_t c = src[x];
+            uint8_t r5 = (uint8_t)((c >> 11) & 0x1f);
+            uint8_t g6 = (uint8_t)((c >> 5) & 0x3f);
+            uint8_t b5 = (uint8_t)(c & 0x1f);
+            *p++ = (uint8_t)((b5 << 3) | (b5 >> 2));
+            *p++ = (uint8_t)((g6 << 2) | (g6 >> 4));
+            *p++ = (uint8_t)((r5 << 3) | (r5 >> 2));
+        }
+        while ((size_t)(p - row) < row_bytes) *p++ = 0;
+        if (fwrite(row, 1, row_bytes, f) != row_bytes) {
+            fclose(f);
+            ESP_LOGE(TAG, "LCD CAPTURE: write failed %s", path);
+            return ESP_FAIL;
+        }
+    }
+
+    fflush(f);
+    fclose(f);
+    return ESP_OK;
+}
+
+
 void bsp_display_delete(void)
 {
     if (disp_handles.panel) {

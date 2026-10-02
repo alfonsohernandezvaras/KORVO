@@ -4,10 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <stdio.h>
-#include <sys/stat.h>
-#include <errno.h>
-#include "esp_heap_caps.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -228,30 +224,6 @@ esp_err_t bsp_display_manual_resync(void)
     busy = false;
     return err;
 }
-
-/* KORVO_V21_6_LCD_FORENSICS
- * Save the RGB driver's REAL framebuffer(s), not an LVGL redraw.
- * This lets us compare what memory contains against what the physical LCD shows.
- * SD destination deliberately stays inside the approved KORVO tree:
- *     /sdcard/korvo/temp/lcd_debug/
- */
-#define KORVO_LCD_CAPTURE_DIR "/sdcard/korvo/temp/lcd_debug"
-
-static void korvo_bmp_put_u16(FILE *f, uint16_t v)
-{
-    uint8_t b[2] = {(uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff)};
-    fwrite(b, 1, sizeof(b), f);
-}
-
-static void korvo_bmp_put_u32(FILE *f, uint32_t v)
-{
-    uint8_t b[4] = {
-        (uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff),
-        (uint8_t)((v >> 16) & 0xff), (uint8_t)((v >> 24) & 0xff)
-    };
-    fwrite(b, 1, sizeof(b), f);
-}
-
 void bsp_display_delete(void)
 {
     if (disp_handles.panel) {

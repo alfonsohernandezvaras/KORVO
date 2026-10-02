@@ -199,7 +199,7 @@ static lv_obj_t *v17_make_flag(lv_obj_t *parent, const char *txt, int x)
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, txt);
     lv_obj_set_style_text_color(l, lv_color_white(), 0);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_10, 0);
     lv_obj_center(l);
     return b;
 }

@@ -17,8 +17,6 @@ static bool s_started;
 static bool s_connected;
 static esp_netif_t *s_sta_netif;
 static korvo_network_config_t s_cfg;
-static uint8_t s_reconnect_attempts;
-#define KORVO_WIFI_QUIET_RECONNECT_MAX 3
 
 static void defaults(korvo_network_config_t *c)
 {
@@ -222,7 +220,6 @@ static void wifi_event(
     } else if (id == WIFI_EVENT_STA_CONNECTED) {
 
         s_connected = true;
-        s_reconnect_attempts = 0;
 
         ESP_LOGI(
             TAG,
@@ -233,19 +230,19 @@ static void wifi_event(
 
         s_connected = false;
 
-        if (s_reconnect_attempts < KORVO_WIFI_QUIET_RECONNECT_MAX) {
-            s_reconnect_attempts++;
-            ESP_LOGW(TAG, "Wi-Fi desconectado; retry %u/%u",
-                     (unsigned)s_reconnect_attempts,
-                     (unsigned)KORVO_WIFI_QUIET_RECONNECT_MAX);
+        ESP_LOGW(
+            TAG,
+            "Wi-Fi desconectado; reintentando SSID=%s",
+            s_cfg.ssid);
 
-            esp_err_t e = esp_wifi_connect();
-            if (e != ESP_OK) {
-                ESP_LOGE(TAG, "Reconexion Wi-Fi fallo: %s", esp_err_to_name(e));
-            }
-        } else {
-            ESP_LOGW(TAG,
-                     "Wi-Fi QUIET: detenido el reconnect continuo; espera reinicio/accion explicita");
+        esp_err_t e =
+            esp_wifi_connect();
+
+        if (e != ESP_OK) {
+            ESP_LOGE(
+                TAG,
+                "Reconexion Wi-Fi fallo: %s",
+                esp_err_to_name(e));
         }
     }
 }
@@ -403,7 +400,7 @@ esp_err_t korvo_network_init(void)
         sizeof(sta.sta.password));
 
     sta.sta.scan_method =
-        WIFI_FAST_SCAN;
+        WIFI_ALL_CHANNEL_SCAN;
 
     sta.sta.sort_method =
         WIFI_CONNECT_AP_BY_SIGNAL;
@@ -429,17 +426,6 @@ esp_err_t korvo_network_init(void)
     if (e != ESP_OK) {
         return e;
     }
-
-    /* V21.10.1: quiet STA power save */
-
-    esp_err_t ps_e = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-
-    if (ps_e != ESP_OK) {
-
-        ESP_LOGW(TAG, "WIFI_PS_MIN_MODEM fallo: %s", esp_err_to_name(ps_e));
-
-    }
-
 
     e =
         esp_wifi_start();
