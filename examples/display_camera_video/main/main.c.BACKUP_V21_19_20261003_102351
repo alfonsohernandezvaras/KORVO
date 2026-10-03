@@ -1143,19 +1143,6 @@ void app_main(void)
     korvo_services_enabled = true;
 
     ESP_LOGI(TAG, "KORVO auxiliary services ENABLED: motion/screensaver + ESP-DL");
-    /* V21.19 NETWORK START AFTER READY
-     * Screen/camera/HMI are already stable before enabling Wi-Fi.
-     * korvo_network_init() owns STA + fixed IPv4 configuration.
-     */
-    ESP_LOGI(TAG, "V21.19: Starting KORVO network after READY...");
-    esp_err_t korvo_net_err = korvo_network_init();
-    if (korvo_net_err != ESP_OK) {
-        ESP_LOGE(TAG, "V21.19: KORVO NETWORK FAILED: %s",
-                 esp_err_to_name(korvo_net_err));
-    } else {
-        ESP_LOGI(TAG, "V21.19: KORVO NETWORK STARTED");
-    }
-
 
     log_memory_headroom("before face AI task");
     /*
