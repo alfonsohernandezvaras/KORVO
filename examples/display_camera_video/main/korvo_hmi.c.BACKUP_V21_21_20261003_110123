@@ -7,7 +7,6 @@
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
 #include "korvo_bluetooth.h"
-#include "korvo_network.h"
 #include "freertos/task.h"
 
 static const char *TAG = "korvo_hmi";
@@ -511,77 +510,6 @@ static void set_face_state(korvo_hmi_face_state_t state)
     }
 }
 
-/* V21.21 WIFI HEALTH WATCHDOG
- * LOCAL state only: no ping, no scan, no gateway query.
- * Timer reads korvo_network_get_status() once per second and touches LVGL
- * only when the displayed state changes.
- */
-static void v21_21_wifi_health_cb(lv_timer_t *t)
-{
-    (void)t;
-    if (!s_v17_location) return;
-
-    static bool last_started = false;
-    static bool last_connected = false;
-    static uint16_t last_reason = 0xFFFF;
-    static uint32_t last_disconnects = UINT32_MAX;
-    static char last_ip[16] = "";
-    static char last_ssid[33] = "";
-
-    korvo_network_status_t st = {0};
-    if (korvo_network_get_status(&st) != ESP_OK) return;
-
-    bool changed =
-        st.started != last_started ||
-        st.connected != last_connected ||
-        st.last_disconnect_reason != last_reason ||
-        st.disconnect_count != last_disconnects ||
-        strcmp(last_ip, st.config.ip) != 0 ||
-        strcmp(last_ssid, st.config.ssid) != 0;
-
-    if (!changed) return;
-
-    last_started = st.started;
-    last_connected = st.connected;
-    last_reason = st.last_disconnect_reason;
-    last_disconnects = st.disconnect_count;
-    strlcpy(last_ip, st.config.ip, sizeof(last_ip));
-    strlcpy(last_ssid, st.config.ssid, sizeof(last_ssid));
-
-    char text[160];
-    if (st.connected) {
-        snprintf(text, sizeof(text),
-                 "IP: %s | HOST: KORVO-01 | SSID: %s",
-                 st.config.ip[0] ? st.config.ip : "--",
-                 st.config.ssid[0] ? st.config.ssid : "--");
-    } else if (st.started) {
-        snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: %s | LINK DOWN R:%u",
-                 st.config.ssid[0] ? st.config.ssid : "--",
-                 (unsigned)st.last_disconnect_reason);
-    } else {
-        snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: --");
-    }
-
-    bsp_display_lock(0);
-    lv_label_set_text(s_v17_location, text);
-    lv_obj_set_style_bg_color(
-        s_v17_location,
-        st.connected ? lv_color_hex(0x003A66) :
-                       (st.started ? lv_color_hex(0x663300) : lv_color_black()),
-        0);
-    if (!s_bt_panel_visible) lv_obj_move_foreground(s_v17_location);
-    if (s_bt_panel_visible && s_bt_panel) lv_obj_move_foreground(s_bt_panel);
-    bsp_display_unlock();
-
-    ESP_LOGI(TAG,
-             "WIFI HEALTH local: started=%d connected=%d ip=%s ssid=%s reason=%u disconnects=%lu",
-             st.started, st.connected,
-             st.config.ip, st.config.ssid,
-             (unsigned)st.last_disconnect_reason,
-             (unsigned long)st.disconnect_count);
-}
 void korvo_hmi_init(void)
 {
     lv_obj_t *screen = lv_scr_act();
@@ -632,7 +560,6 @@ void korvo_hmi_init(void)
     lv_obj_set_style_text_align(s_v17_location,LV_TEXT_ALIGN_CENTER,0); lv_obj_set_style_bg_color(s_v17_location,lv_color_black(),0);
     lv_obj_set_style_bg_opa(s_v17_location,LV_OPA_70,0); lv_obj_set_style_pad_all(s_v17_location,6,0);
     lv_obj_align(s_v17_location,LV_ALIGN_TOP_MID,0,6);
-    lv_timer_create(v21_21_wifi_health_cb, 1000, NULL); /* V21.21 local WiFi health */
     lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
 s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);

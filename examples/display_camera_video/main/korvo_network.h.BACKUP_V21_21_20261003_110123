@@ -45,8 +45,6 @@ typedef struct
 {
     bool started;
     bool connected;
-    uint16_t last_disconnect_reason;
-    uint32_t disconnect_count;
     uint16_t connected_clients;
     uint8_t mac[6];
     korvo_network_config_t config;
