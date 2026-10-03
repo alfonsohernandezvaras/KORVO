@@ -9,7 +9,6 @@
 #include "esp_wifi.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "freertos/timers.h"
 
 static const char *TAG = "korvo_network";
 static const char *NVS_NS = "korvo_net";
@@ -21,60 +20,6 @@ static korvo_network_config_t s_cfg;
 static uint8_t s_reconnect_attempts;
 static uint16_t s_last_disconnect_reason;
 static uint32_t s_disconnect_count;
-
-/* V21.22 WIFI AUTO RECOVERY QUIET
- * One-shot timer exists only to wake a reconnect attempt while disconnected.
- * No ping, no active scan API, no gateway traffic.
- */
-static TimerHandle_t s_wifi_recovery_timer;
-#define KORVO_WIFI_RECOVERY_MS 10000
-
-static void wifi_recovery_timer_cb(TimerHandle_t timer)
-{
-    (void)timer;
-
-    if (!s_started || s_connected) {
-        return;
-    }
-
-    ESP_LOGI(TAG,
-             "Wi-Fi RECOVERY QUIET: buscando SSID configurado mediante reconnect");
-
-    esp_err_t e = esp_wifi_connect();
-    if (e != ESP_OK) {
-        ESP_LOGW(TAG,
-                 "Wi-Fi RECOVERY connect fallo: %s",
-                 esp_err_to_name(e));
-
-        if (s_wifi_recovery_timer) {
-            (void)xTimerStart(s_wifi_recovery_timer, 0);
-        }
-    }
-}
-
-static void wifi_recovery_arm(void)
-{
-    if (!s_wifi_recovery_timer) {
-        s_wifi_recovery_timer =
-            xTimerCreate("wifi_recovery",
-                         pdMS_TO_TICKS(KORVO_WIFI_RECOVERY_MS),
-                         pdFALSE,
-                         NULL,
-                         wifi_recovery_timer_cb);
-    }
-
-    if (s_wifi_recovery_timer) {
-        (void)xTimerStop(s_wifi_recovery_timer, 0);
-        (void)xTimerStart(s_wifi_recovery_timer, 0);
-    }
-}
-
-static void wifi_recovery_cancel(void)
-{
-    if (s_wifi_recovery_timer) {
-        (void)xTimerStop(s_wifi_recovery_timer, 0);
-    }
-}
 #define KORVO_WIFI_QUIET_RECONNECT_MAX 3
 
 static void defaults(korvo_network_config_t *c)
@@ -189,7 +134,6 @@ static void wifi_event(
     } else if (id == WIFI_EVENT_STA_CONNECTED) {
 
         s_connected = true;
-        wifi_recovery_cancel();
         s_reconnect_attempts = 0;
 
         ESP_LOGI(
@@ -222,9 +166,7 @@ static void wifi_event(
             }
         } else {
             ESP_LOGW(TAG,
-                     "Wi-Fi QUIET: retries rapidos agotados; recovery cada %u s",
-                     (unsigned)(KORVO_WIFI_RECOVERY_MS / 1000U));
-            wifi_recovery_arm();
+                     "Wi-Fi QUIET: detenido el reconnect continuo; espera reinicio/accion explicita");
         }
     }
 }
