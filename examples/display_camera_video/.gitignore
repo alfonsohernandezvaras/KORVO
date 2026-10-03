@@ -1,0 +1,5 @@
+build/
+*.BACKUP*
+*.backup*
+*.LOCAL_ANTES*
+sdkconfig.old
