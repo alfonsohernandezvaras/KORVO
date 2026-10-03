@@ -677,13 +677,13 @@ s_v21_23_sd_keys=lv_label_create(s_storage_card);
     lv_obj_set_pos(s_v21_23_sd_vals, 102, 28);
     lv_obj_set_style_text_color(s_v21_23_sd_keys,lv_color_white(),0);
     lv_obj_set_style_text_color(s_v21_23_sd_vals,lv_color_white(),0);
-    lv_obj_set_style_text_line_space(s_v21_23_sd_keys, 10, 0);
-    lv_obj_set_style_text_line_space(s_v21_23_sd_vals, 10, 0);
+    lv_obj_set_style_text_line_space(s_v21_23_sd_keys, 4, 0);
+    lv_obj_set_style_text_line_space(s_v21_23_sd_vals, 4, 0);
     lv_label_set_text(s_v21_23_sd_keys,"SD\nSistema\nEstructura\nUsado\nLibre");
     lv_label_set_text(s_v21_23_sd_vals,"--\n--\n--\n--\n--");
     lv_obj_remove_style_all(s_storage_card);
-    lv_obj_set_size(s_storage_card, 250, 104);
-    lv_obj_set_pos(s_storage_card, 18, 370);
+    lv_obj_set_size(s_storage_card, 190, 150);
+    lv_obj_set_pos(s_storage_card, 18, 320);
     lv_obj_set_style_bg_color(s_storage_card, lv_color_hex(0x202830), 0);
     lv_obj_set_style_bg_opa(s_storage_card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_storage_card, 1, 0);
@@ -691,18 +691,18 @@ s_v21_23_sd_keys=lv_label_create(s_storage_card);
     lv_obj_set_style_radius(s_storage_card, 8, 0);
     lv_obj_clear_flag(s_storage_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    s_storage_card_label = lv_label_create(s_storage_card);
-    lv_obj_set_width(s_storage_card_label, 236);
-    lv_obj_set_style_text_color(s_storage_card_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_style_pad_all(s_storage_card_label, 7, 0);
-    lv_label_set_text(s_storage_card_label,
-                      "SD         : --\n"
-                      "SISTEMA    : --\n"
-                      "ESTRUCTURA : --\n"
-                      "USADO      : -- MB\n"
-                      "LIBRE      : -- MB");
-    lv_obj_center(s_storage_card_label);
+    //s_storage_card_label = lv_label_create(s_storage_card);
+    //lv_obj_set_width(s_storage_card_label, 236);
+    //lv_obj_set_style_text_color(s_storage_card_label, lv_color_white(), 0);
+    //lv_obj_set_style_text_align(s_storage_card_label, LV_TEXT_ALIGN_LEFT, 0);
+    //lv_obj_set_style_pad_all(s_storage_card_label, 7, 0);
+    //lv_label_set_text(s_storage_card_label,
+    //                  "SD         : --\n"
+    //                  "SISTEMA    : --\n"
+    //                  "ESTRUCTURA : --\n"
+    //                 "USADO      : -- MB\n"
+    //                  "LIBRE      : -- MB");
+    //lv_obj_center(s_storage_card_label);
 
     s_storage_diag = s_storage_card;
     s_gateway_footer = NULL;
