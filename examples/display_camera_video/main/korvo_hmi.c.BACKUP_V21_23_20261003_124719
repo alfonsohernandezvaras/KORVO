@@ -11,7 +11,6 @@
 #include "freertos/task.h"
 
 static const char *TAG = "korvo_hmi";
-/* V21.23 HMI HEALTH ARCH */
 
 static lv_obj_t *s_guide = NULL;
 static lv_obj_t *s_message = NULL;
@@ -22,8 +21,6 @@ static lv_obj_t *s_storage_diag = NULL;
 /* KORVO_V17_7_SD_STATUS_CARD_REAL */
 static lv_obj_t *s_storage_card = NULL;
 static lv_obj_t *s_storage_card_label = NULL;
-static lv_obj_t *s_v21_23_sd_keys=NULL;
-static lv_obj_t *s_v21_23_sd_vals=NULL;
 static lv_obj_t *s_gateway_footer = NULL;
 static lv_obj_t *s_volume_slider = NULL;
 static lv_obj_t *s_volume_label = NULL;
@@ -644,7 +641,6 @@ s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
     s_v17_door=v17_make_flag(screen,"PUERTA",220);
     s_v17_sd=v17_make_flag(screen,"SD CARD",270);
     s_v17_bt=v17_make_flag(screen,"BLUETOOTH",320);
-    lv_obj_add_flag(s_v17_bt, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_v17_bt,bt_open_cb,LV_EVENT_CLICKED,NULL);
     lv_timer_create(v17_pulse_cb,100,NULL);
@@ -659,28 +655,6 @@ s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
 
     /* KORVO_V17_8_VISUAL_HMI: SD card */
     s_storage_card = lv_obj_create(screen);
-    /* V21.24.1 SD DETAIL LAYOUT
-     * Card detail immediately below SD status button.
-     * Keep existing X/width; use freed Bluetooth vertical space.
-     */
-    if (s_v17_sd_btn) {
-        lv_coord_t sd_bottom = lv_obj_get_y(s_v17_sd_btn) + lv_obj_get_height(s_v17_sd_btn);
-        lv_obj_set_y(s_storage_card, sd_bottom + 4);
-        lv_coord_t detail_h = 480 - (sd_bottom + 4) - 8;
-        if (detail_h < 100) detail_h = 100;
-        lv_obj_set_height(s_storage_card, detail_h);
-    }
-    /* V21.23: SD keeps width, gains vertical space; real LVGL columns. */
-s_v21_23_sd_keys=lv_label_create(s_storage_card);
-    s_v21_23_sd_vals=lv_label_create(s_storage_card);
-    lv_obj_set_pos(s_v21_23_sd_keys, 10, 28);
-    lv_obj_set_pos(s_v21_23_sd_vals, 102, 28);
-    lv_obj_set_style_text_color(s_v21_23_sd_keys,lv_color_white(),0);
-    lv_obj_set_style_text_color(s_v21_23_sd_vals,lv_color_white(),0);
-    lv_obj_set_style_text_line_space(s_v21_23_sd_keys, 10, 0);
-    lv_obj_set_style_text_line_space(s_v21_23_sd_vals, 10, 0);
-    lv_label_set_text(s_v21_23_sd_keys,"SD\nSistema\nEstructura\nUsado\nLibre");
-    lv_label_set_text(s_v21_23_sd_vals,"--\n--\n--\n--\n--");
     lv_obj_remove_style_all(s_storage_card);
     lv_obj_set_size(s_storage_card, 250, 104);
     lv_obj_set_pos(s_storage_card, 18, 370);
@@ -1065,16 +1039,6 @@ void korvo_hmi_update_storage(bool sd_ok,
                               uint64_t used_bytes,
                               uint64_t free_bytes)
 {
-    if(s_v21_23_sd_keys && s_v21_23_sd_vals){
-        char v[128];
-        double u=(double)used_bytes/(1024.0*1024.0*1024.0);
-        double fr=(double)free_bytes/(1024.0*1024.0*1024.0);
-        lv_label_set_text(s_v21_23_sd_keys,"SD\nSistema\nEstructura\nUsado\nLibre");
-        snprintf(v,sizeof(v),"%s\n%s\n%s\n%.2f GB\n%.2f GB",
-                 sd_ok?"OK":"FALLO",fs_ok?"OK":"FALLO",
-                 structure_ok?"OK":"FALLO",u,fr);
-        lv_label_set_text(s_v21_23_sd_vals,v);
-    }
     if (!s_v17_sd_btn && !s_storage_card_label) return;
 
     const char *sd_txt = sd_ok ? "OK" : "ERR";
@@ -1120,12 +1084,7 @@ void korvo_hmi_update_storage(bool sd_ok,
         lv_obj_move_foreground(s_bt_panel);
 
     bsp_display_unlock();
-
-    /* Blue only when the complete SD condition is healthy. */
-    if(s_v17_sd){
-        v17_color(s_v17_sd,(sd_ok&&fs_ok&&structure_ok)?0x003A66:
-                            (sd_ok?0x8A4B08:0x202830));
-    }}
+}
 
 
 void korvo_hmi_update_bluetooth(const korvo_bluetooth_status_t *bt)
@@ -1238,20 +1197,7 @@ void korvo_hmi_update_gateway_status(const char *room,const char *gateway_name,b
         lv_obj_move_foreground(s_bt_panel);
     }
     bsp_display_unlock();
-
-    /* V21.23 presentation only: no network polling here. */
-    bool gw_health=gateway_ok && control_ok;
-    bool ast_health=(sip_state && sip_state[0] &&
-                     strcmp(sip_state,"OFFLINE")!=0 &&
-                     strcmp(sip_state,"DOWN")!=0 &&
-                     strcmp(sip_state,"--")!=0);
-    bool sip_health=ast_health && sip_registered;
-    if(s_v17_gateway)
-        v17_color(s_v17_gateway,gw_health?0x003A66:
-                  ((gateway_ok||control_ok)?0x8A4B08:0x202830));
-    if(s_v17_sip)
-        v17_color(s_v17_sip,sip_health?0x003A66:
-                  ((ast_health||sip_registered)?0x8A4B08:0x202830));}
+}
 void korvo_hmi_update_location(const char *ip,const char *host){
     if (!s_v17_location) {
         return;

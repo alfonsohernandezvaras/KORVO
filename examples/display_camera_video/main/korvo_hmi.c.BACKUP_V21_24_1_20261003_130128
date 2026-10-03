@@ -659,26 +659,14 @@ s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
 
     /* KORVO_V17_8_VISUAL_HMI: SD card */
     s_storage_card = lv_obj_create(screen);
-    /* V21.24.1 SD DETAIL LAYOUT
-     * Card detail immediately below SD status button.
-     * Keep existing X/width; use freed Bluetooth vertical space.
-     */
-    if (s_v17_sd_btn) {
-        lv_coord_t sd_bottom = lv_obj_get_y(s_v17_sd_btn) + lv_obj_get_height(s_v17_sd_btn);
-        lv_obj_set_y(s_storage_card, sd_bottom + 4);
-        lv_coord_t detail_h = 480 - (sd_bottom + 4) - 8;
-        if (detail_h < 100) detail_h = 100;
-        lv_obj_set_height(s_storage_card, detail_h);
-    }
     /* V21.23: SD keeps width, gains vertical space; real LVGL columns. */
-s_v21_23_sd_keys=lv_label_create(s_storage_card);
+    lv_obj_set_height(s_storage_card, 174);
+    s_v21_23_sd_keys=lv_label_create(s_storage_card);
     s_v21_23_sd_vals=lv_label_create(s_storage_card);
-    lv_obj_set_pos(s_v21_23_sd_keys, 10, 28);
-    lv_obj_set_pos(s_v21_23_sd_vals, 102, 28);
+    lv_obj_set_pos(s_v21_23_sd_keys,10,34);
+    lv_obj_set_pos(s_v21_23_sd_vals,102,34);
     lv_obj_set_style_text_color(s_v21_23_sd_keys,lv_color_white(),0);
     lv_obj_set_style_text_color(s_v21_23_sd_vals,lv_color_white(),0);
-    lv_obj_set_style_text_line_space(s_v21_23_sd_keys, 10, 0);
-    lv_obj_set_style_text_line_space(s_v21_23_sd_vals, 10, 0);
     lv_label_set_text(s_v21_23_sd_keys,"SD\nSistema\nEstructura\nUsado\nLibre");
     lv_label_set_text(s_v21_23_sd_vals,"--\n--\n--\n--\n--");
     lv_obj_remove_style_all(s_storage_card);
