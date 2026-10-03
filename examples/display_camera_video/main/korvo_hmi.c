@@ -48,6 +48,19 @@ static lv_obj_t *s_v17_bt_btn = NULL;
 static lv_obj_t *s_v17_location=NULL,*s_v17_gateway=NULL,*s_v17_reader=NULL,*s_v17_door=NULL,*s_v17_sd=NULL,*s_v17_bt=NULL;
 static uint32_t s_v17_reader_until=0,s_v17_door_until=0;
 
+/* KORVO_V21_26_STATE_ENGINE
+ * Color fijo = salud/estado.
+ * Verde parpadeante se reserva para actividad real.
+ * NO crea objetos LVGL ni cambia coordenadas.
+ */
+static volatile bool s_v21_26_web_ok = false;
+
+#define K26_GRAY    0x202830u
+#define K26_ORANGE  0xB06000u
+#define K26_BLUE    0x005EA8u
+#define K26_GREEN   0x008A3Bu
+
+
 
 /* Dedicated local Bluetooth UI. It is a full-screen mode, hidden when not in use,
  * so the camera view is restored cleanly with no persistent overlay. */
@@ -526,6 +539,7 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
 
     static bool last_started = false;
     static bool last_connected = false;
+    static bool last_web_ok = false;
     static uint16_t last_reason = 0xFFFF;
     static uint32_t last_disconnects = UINT32_MAX;
     static char last_ip[16] = "";
@@ -540,12 +554,14 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
         st.last_disconnect_reason != last_reason ||
         st.disconnect_count != last_disconnects ||
         strcmp(last_ip, st.config.ip) != 0 ||
-        strcmp(last_ssid, st.config.ssid) != 0;
+        strcmp(last_ssid, st.config.ssid) != 0 ||
+        s_v21_26_web_ok != last_web_ok;
 
     if (!changed) return;
 
     last_started = st.started;
     last_connected = st.connected;
+    last_web_ok = s_v21_26_web_ok;
     last_reason = st.last_disconnect_reason;
     last_disconnects = st.disconnect_count;
     strlcpy(last_ip, st.config.ip, sizeof(last_ip));
@@ -554,17 +570,18 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     char text[160];
     if (st.connected) {
         snprintf(text, sizeof(text),
-                 "IP: %s | HOST: KORVO-01 | SSID: %s",
+                 "IP: %s | HOST: KORVO-01 | SSID: %s | WS: %s",
                  st.config.ip[0] ? st.config.ip : "--",
-                 st.config.ssid[0] ? st.config.ssid : "--");
+                 st.config.ssid[0] ? st.config.ssid : "--",
+                 s_v21_26_web_ok ? "OK" : "FAIL");
     } else if (st.started) {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: %s | LINK DOWN R:%u",
+                 "IP: -- | HOST: KORVO-01 | SSID: %s | WS: FAIL | LINK DOWN R:%u",
                  st.config.ssid[0] ? st.config.ssid : "--",
                  (unsigned)st.last_disconnect_reason);
     } else {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: --");
+                 "IP: -- | HOST: KORVO-01 | SSID: -- | WS: FAIL");
     }
 
     bsp_display_lock(0);
@@ -1276,4 +1293,52 @@ void korvo_hmi_pulse_door(void){bsp_display_lock(0);v17_color(s_v17_door,0xCC770
 korvo_hmi_face_state_t korvo_hmi_face_state(void)
 {
     return s_face_state;
+}
+
+
+/* ===== KORVO V21.26 SAFE STATE ENGINE ===== */
+void korvo_hmi_update_webserver(bool ok)
+{
+    s_v21_26_web_ok = ok;
+}
+
+void korvo_hmi_update_sd_button(bool sd_ok, bool fs_ok, bool structure_ok)
+{
+    if (!s_v17_sd) return;
+    bsp_display_lock(0);
+    if (!sd_ok) {
+        v17_color(s_v17_sd, K26_GRAY);
+    } else if (!fs_ok || !structure_ok) {
+        v17_color(s_v17_sd, K26_ORANGE);
+    } else {
+        v17_color(s_v17_sd, K26_BLUE);
+    }
+    bsp_display_unlock();
+}
+
+void korvo_hmi_update_sip_button(bool engine_ready,
+                                 bool enabled,
+                                 bool network_ready,
+                                 bool registered,
+                                 int sip_state)
+{
+    if (!s_v17_sip) return;
+    uint32_t color = K26_GRAY;
+
+    /* korvo_sip_state_t: CALLING..CONNECTED = 4..8 */
+    bool call_flow = (sip_state >= 4 && sip_state <= 8);
+
+    if (call_flow) {
+        color = K26_GREEN;
+    } else if (registered) {
+        color = K26_BLUE;
+    } else if (engine_ready || enabled || network_ready) {
+        color = K26_ORANGE;
+    } else {
+        color = K26_GRAY;
+    }
+
+    bsp_display_lock(0);
+    v17_color(s_v17_sip, color);
+    bsp_display_unlock();
 }

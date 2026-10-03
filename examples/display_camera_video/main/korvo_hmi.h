@@ -75,6 +75,13 @@ korvo_hmi_face_state_t korvo_hmi_face_state(void);
 void korvo_hmi_update_location(const char *ip,const char *host);
 void korvo_hmi_pulse_reader(void);
 void korvo_hmi_pulse_door(void);
+void korvo_hmi_update_webserver(bool ok);
+void korvo_hmi_update_sd_button(bool sd_ok, bool fs_ok, bool structure_ok);
+void korvo_hmi_update_sip_button(bool engine_ready,
+                                 bool enabled,
+                                 bool network_ready,
+                                 bool registered,
+                                 int sip_state);
 #ifdef __cplusplus
 }
 #endif

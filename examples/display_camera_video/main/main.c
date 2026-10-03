@@ -714,6 +714,9 @@ static void storage_watchdog_task(void *arg)
                                  (int)status.state,
                                  status.used_bytes,
                                  status.free_bytes);
+        korvo_hmi_update_sd_button(status.sd_ok,
+                                   status.fs_ok,
+                                   status.structure_ok);
 
         if (first_sample || ok != last_ok) {
             if (ok) {
@@ -780,6 +783,11 @@ static void gateway_hmi_task(void *arg)
         korvo_bluetooth_supervise();
         korvo_gateway_get_status(&gw);
         korvo_sip_get_status(&sip);
+        korvo_hmi_update_sip_button(sip.engine_ready,
+                                    sip.enabled,
+                                    sip.network_ready,
+                                    sip.registered,
+                                    (int)sip.state);
         korvo_bluetooth_get_status(&bt);
         korvo_network_get_status(&net);
         korvo_hmi_update_bluetooth(&bt);
@@ -1156,11 +1164,13 @@ void app_main(void)
         ESP_LOGI(TAG, "V21.19: KORVO NETWORK STARTED");
         /* V21.20 WEBSERVER START - existing server, no new polling */
         ESP_LOGI(TAG, "V21.20: Starting existing KORVO webserver...");
+        korvo_hmi_update_webserver(false);
         esp_err_t web_err = korvo_web_start();
         if (web_err != ESP_OK) {
             ESP_LOGE(TAG, "V21.20: WEBSERVER FAILED: %s", esp_err_to_name(web_err));
         } else {
             ESP_LOGI(TAG, "V21.20: KORVO WEBSERVER STARTED");
+            korvo_hmi_update_webserver(true);
         }
 
     }
