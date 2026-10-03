@@ -1154,15 +1154,6 @@ void app_main(void)
                  esp_err_to_name(korvo_net_err));
     } else {
         ESP_LOGI(TAG, "V21.19: KORVO NETWORK STARTED");
-        /* V21.20 WEBSERVER START - existing server, no new polling */
-        ESP_LOGI(TAG, "V21.20: Starting existing KORVO webserver...");
-        esp_err_t web_err = korvo_web_start();
-        if (web_err != ESP_OK) {
-            ESP_LOGE(TAG, "V21.20: WEBSERVER FAILED: %s", esp_err_to_name(web_err));
-        } else {
-            ESP_LOGI(TAG, "V21.20: KORVO WEBSERVER STARTED");
-        }
-
     }
 
 
