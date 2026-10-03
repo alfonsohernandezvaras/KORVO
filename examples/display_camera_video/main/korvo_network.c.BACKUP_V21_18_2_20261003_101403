@@ -325,12 +325,10 @@ esp_err_t korvo_network_init(void)
             ? WIFI_AUTH_WPA2_PSK
             : WIFI_AUTH_OPEN;
 
-    e = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    if (e != ESP_OK) {
-        return e;
-    }
+    e =
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
-    e = esp_wifi_set_mode(
+        esp_wifi_set_mode(
             WIFI_MODE_STA);
 
     if (e != ESP_OK) {

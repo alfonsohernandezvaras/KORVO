@@ -93,11 +93,99 @@ static bool valid_cfg(const korvo_network_config_t *c)
 
 static esp_err_t load_cfg(korvo_network_config_t *c)
 {
-    /* V21.18.1: fixed compiled network; stale NVS cannot override it. */
-    if (!c) return ESP_ERR_INVALID_ARG;
     defaults(c);
-    ESP_LOGI(TAG, "FIXED CFG ssid=%s ip=%s mask=%s gw=%s dns=%s",
-             c->ssid, c->ip, c->netmask, c->network_gateway, c->dns);
+
+    nvs_handle_t h;
+
+    esp_err_t e =
+        nvs_open(
+            NVS_NS,
+            NVS_READONLY,
+            &h);
+
+    if (e == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK;
+    }
+
+    if (e != ESP_OK) {
+        return e;
+    }
+
+    size_t n;
+
+    n = sizeof(c->ssid);
+    (void)nvs_get_str(
+        h,
+        "ssid",
+        c->ssid,
+        &n);
+
+    n = sizeof(c->password);
+    (void)nvs_get_str(
+        h,
+        "pass",
+        c->password,
+        &n);
+
+    n = sizeof(c->ip);
+    (void)nvs_get_str(
+        h,
+        "ip",
+        c->ip,
+        &n);
+
+    n = sizeof(c->netmask);
+    (void)nvs_get_str(
+        h,
+        "mask",
+        c->netmask,
+        &n);
+
+    /*
+     * Nuevas claves:
+     * netgw = gateway IP real de la LAN
+     * dns   = DNS
+     * node  = Gateway/controlador KORVO
+     *
+     * La clave antigua "gw" no se reutiliza para evitar confundir
+     * el antiguo gateway-node 192.168.5.51 con el gateway IP.
+     */
+    n = sizeof(c->network_gateway);
+    (void)nvs_get_str(
+        h,
+        "netgw",
+        c->network_gateway,
+        &n);
+
+    n = sizeof(c->dns);
+    (void)nvs_get_str(
+        h,
+        "dns",
+        c->dns,
+        &n);
+
+    n = sizeof(c->gateway_node_ip);
+    esp_err_t node_e =
+        nvs_get_str(
+            h,
+            "node",
+            c->gateway_node_ip,
+            &n);
+
+    /*
+     * Migración suave:
+     * si todavía no existe "node", no tomamos la antigua "gw"
+     * porque pertenece a la arquitectura 192.168.5.x.
+     * Se mantiene el nuevo valor por defecto 192.168.10.51.
+     */
+    (void)node_e;
+
+    nvs_close(h);
+
+    if (!valid_cfg(c)) {
+        defaults(c);
+    }
+
     return ESP_OK;
 }
 
@@ -325,12 +413,8 @@ esp_err_t korvo_network_init(void)
             ? WIFI_AUTH_WPA2_PSK
             : WIFI_AUTH_OPEN;
 
-    e = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    if (e != ESP_OK) {
-        return e;
-    }
-
-    e = esp_wifi_set_mode(
+    e =
+        esp_wifi_set_mode(
             WIFI_MODE_STA);
 
     if (e != ESP_OK) {
