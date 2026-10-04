@@ -19,6 +19,14 @@ extern "C" {
 
 #define KORVO_PROTOCOL_DICTIONARY_VERSION  1u
 
+/*
+ * FUENTES DE ESTADO:
+ * GATEWAY -> GATEWAY / LECTOR / PUERTA
+ * ASTERISK -> SIP
+ * LOCAL KORVO -> SD / WEBSERVER
+ * AUDIO_* corresponde al futuro puente KORVO-Gateway y no al registro SIP.
+ */
+
 typedef enum {
     KORVO_MSG_GATEWAY_READY     = 0x01,
     KORVO_MSG_DICTIONARY_ID     = 0x02,

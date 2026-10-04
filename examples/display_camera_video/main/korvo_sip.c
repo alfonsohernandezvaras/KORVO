@@ -185,19 +185,24 @@ static bool clean_token(const char *s)
     return true;
 }
 
+/* KORVO_V21_31_SIP_FINAL: factory persistente */
+/* KORVO_V21_32_SINGLE_SOURCE
+ * Motor SIP = unica autoridad durante estabilizacion.
+ */
 static void defaults(korvo_sip_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->enabled = false;
-    copy_text(cfg->server, sizeof(cfg->server), "192.168.10.2");
+    cfg->enabled = true;
+    copy_text(cfg->server, sizeof(cfg->server), "192.168.10.10");
     cfg->server_port = 5060;
     cfg->local_port = 5060;
     cfg->rtp_port = 4000;
-    cfg->register_expires = 300;
     copy_text(cfg->extension, sizeof(cfg->extension), "200");
     copy_text(cfg->username, sizeof(cfg->username), "200");
-    copy_text(cfg->display_name, sizeof(cfg->display_name), "KORVO-001");
+    copy_text(cfg->password, sizeof(cfg->password), "korvo200");
+    copy_text(cfg->display_name, sizeof(cfg->display_name), "Sala 01");
     copy_text(cfg->operator_extension, sizeof(cfg->operator_extension), "300");
+    cfg->register_expires = 300;
 }
 
 static bool valid_cfg(const korvo_sip_config_t *cfg)
@@ -216,18 +221,12 @@ static bool valid_cfg(const korvo_sip_config_t *cfg)
 static esp_err_t load_cfg(void)
 {
     defaults(&s_cfg);
-    nvs_handle_t h;
-    esp_err_t e = nvs_open(NVS_NS, NVS_READONLY, &h);
-    if (e == ESP_ERR_NVS_NOT_FOUND) return ESP_OK;
-    if (e != ESP_OK) return e;
-    size_t n = sizeof(s_cfg);
-    e = nvs_get_blob(h, NVS_KEY, &s_cfg, &n);
-    nvs_close(h);
-    if (e == ESP_ERR_NVS_NOT_FOUND || n != sizeof(s_cfg) || !valid_cfg(&s_cfg)) {
-        defaults(&s_cfg);
-        return ESP_OK;
-    }
-    return e;
+    ESP_LOGI(TAG, "SIP FACTORY cfg: enabled=%d server=%s:%u local=%u rtp=%u ext=%s user=%s display=%s central=%s expires=%u",
+             s_cfg.enabled, s_cfg.server, (unsigned)s_cfg.server_port,
+             (unsigned)s_cfg.local_port, (unsigned)s_cfg.rtp_port,
+             s_cfg.extension, s_cfg.username, s_cfg.display_name,
+             s_cfg.operator_extension, (unsigned)s_cfg.register_expires);
+    return ESP_OK;
 }
 
 static esp_err_t persist_cfg(void)

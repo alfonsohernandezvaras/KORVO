@@ -1328,11 +1328,16 @@ void korvo_hmi_update_sip_button(bool engine_ready,
     /* korvo_sip_state_t: CALLING..CONNECTED = 4..8 */
     bool call_flow = (sip_state >= 4 && sip_state <= 8);
 
+    /* KORVO_V21_28_SIP_ASTERISK_HMI
+     * SIP pertenece a ASTERISK, no al Gateway.
+     * GRIS=no disponible, NARANJO=activo/no registrado,
+     * AZUL=REGISTERED, VERDE=llamada.
+     */
     if (call_flow) {
         color = K26_GREEN;
     } else if (registered) {
         color = K26_BLUE;
-    } else if (engine_ready || enabled || network_ready) {
+    } else if (enabled || engine_ready || network_ready) {
         color = K26_ORANGE;
     } else {
         color = K26_GRAY;
@@ -1340,5 +1345,31 @@ void korvo_hmi_update_sip_button(bool engine_ready,
 
     bsp_display_lock(0);
     v17_color(s_v17_sip, color);
+    bsp_display_unlock();
+}
+
+/* KORVO_V21_27_GATEWAY_STATE
+ * Estado base: GRIS=no visible, NARANJO=visible/incompleto, AZUL=READY.
+ * Verde parpadeante se reserva para actividad real posterior.
+ */
+void korvo_hmi_update_gateway_button(bool configured,
+                                     bool visible,
+                                     bool map_ok,
+                                     bool control_ok,
+                                     bool gateway_ready)
+{
+    if (!s_v17_gateway) return;
+    uint32_t color = K26_GRAY;
+
+    if (!configured || !visible) {
+        color = K26_GRAY;
+    } else if (!map_ok || !control_ok || !gateway_ready) {
+        color = K26_ORANGE;
+    } else {
+        color = K26_BLUE;
+    }
+
+    bsp_display_lock(0);
+    v17_color(s_v17_gateway, color);
     bsp_display_unlock();
 }

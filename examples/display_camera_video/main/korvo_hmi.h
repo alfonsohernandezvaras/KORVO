@@ -82,6 +82,11 @@ void korvo_hmi_update_sip_button(bool engine_ready,
                                  bool network_ready,
                                  bool registered,
                                  int sip_state);
+void korvo_hmi_update_gateway_button(bool configured,
+                                     bool visible,
+                                     bool map_ok,
+                                     bool control_ok,
+                                     bool gateway_ready);
 #ifdef __cplusplus
 }
 #endif

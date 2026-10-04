@@ -782,7 +782,27 @@ static void gateway_hmi_task(void *arg)
     for (;;) {
         korvo_bluetooth_supervise();
         korvo_gateway_get_status(&gw);
+
+        /* V21.27: comando/visibilidad no equivalen a READY. */
+        korvo_hmi_update_gateway_button(gw.paired,
+                                        gw.websocket_connected,
+                                        gw.remote_map_ok,
+                                        gw.control_ok,
+                                        gw.gateway_ok);
+
+        /* V21.28: SIP/Asterisk independiente del Gateway. */
         korvo_sip_get_status(&sip);
+        /* V21.29: recuperacion SIP/Asterisk. */
+        static uint32_t sip_recover_ticks = 0;
+        if (sip.enabled && sip.network_ready && !sip.registered &&
+            sip.state != KORVO_SIP_REGISTERING) {
+            if (++sip_recover_ticks >= 10) {
+                (void)korvo_sip_force_register();
+                sip_recover_ticks = 0;
+            }
+        } else {
+            sip_recover_ticks = 0;
+        }
         korvo_hmi_update_sip_button(sip.engine_ready,
                                     sip.enabled,
                                     sip.network_ready,
