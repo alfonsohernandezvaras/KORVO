@@ -1010,14 +1010,13 @@ static esp_err_t intercom_g(httpd_req_t *r)
 {
     if (!guard(r)) return ESP_OK;
 
+    /* KORVO_V21_33_INTERCOM_COMPACT */
     korvo_sip_config_t sc = {0};
-    korvo_sip_status_t ss = {0};
     korvo_bluetooth_config_t bc = {0};
     korvo_bluetooth_status_t bs = {0};
     korvo_audio_bridge_status_t as = {0};
     korvo_alarm_status_t alarm = {0};
     korvo_sip_get_config(&sc);
-    korvo_sip_get_status(&ss);
     korvo_bluetooth_get_config(&bc);
     korvo_bluetooth_get_status(&bs);
 
@@ -1041,46 +1040,35 @@ static esp_err_t intercom_g(httpd_req_t *r)
     head(r, "Intercom");
 
     snprintf(b, bz,
-        "<div class=card><h2>SIP / INTERCOM</h2>"
-        "<p class=small>KORVO es el cliente SIP. El Gateway solo envia el evento del boton CALL por WebSocket.</p>"
-        "<form method=post action=/sip/save>"
-        "<label><input type=checkbox name=enabled value=1 %s> SIP habilitado</label>"
-        "<label>Servidor Asterisk / PBX</label><input name=server maxlength=63 value='%s'>"
-        "<label>Puerto SIP</label><input name=server_port type=number min=1 max=65535 value='%u'>"
-        "<label>Puerto SIP local</label><input name=local_port type=number min=1 max=65535 value='%u'>"
-        "<label>Puerto RTP local</label><input name=rtp_port type=number min=1 max=65535 value='%u'>"
-        "<label>Extension KORVO</label><input name=extension maxlength=31 value='%s'>"
-        "<label>Usuario SIP</label><input name=username maxlength=31 value='%s'>"
-        "<label>Password SIP</label><input name=password type=password maxlength=63 placeholder='dejar vacio para conservar'>"
-        "<label>Display name</label><input name=display_name maxlength=47 value='%s'>"
-        "<label>Extension operador / central</label><input name=operator_extension maxlength=31 value='%s'>"
-        "<label>REGISTER expires (s)</label><input name=expires type=number min=60 max=3600 value='%u'>"
-        "<button class=btn>GUARDAR SIP</button></form>"
-        "<hr><div class=grid>"
-        "<div>Engine</div><div class=%s>%s</div>"
-        "<div>REGISTER</div><div class=%s>%s</div>"
-        "<div>Call state</div><div class=mono>%s</div>"
-        "<div>Remote</div><div class=mono>%s</div>"
-        "<div>RTP codec</div><div>%s</div>"
-        "<div>Last SIP code</div><div>%d</div>"
-        "<div>Error</div><div class=bad>%s</div>"
-        "</div>"
-        "<form method=post action=/sip/action style='display:inline'><input type=hidden name=action value=register><button class=btn>REGISTER</button></form> "
-        "<form method=post action=/sip/action style='display:inline'><input type=hidden name=action value=call><button class=btn>CALL OPERATOR</button></form> "
-        "<form method=post action=/sip/action style='display:inline'><input type=hidden name=action value=answer><button class=btn>ANSWER</button></form> "
-        "<form method=post action=/sip/action style='display:inline'><input type=hidden name=action value=reject><button class=btn>REJECT</button></form> "
-        "<form method=post action=/sip/action style='display:inline'><input type=hidden name=action value=hangup><button class='btn danger'>HANGUP</button></form>"
-        "</div>",
-        sc.enabled ? "checked" : "",
+        "<style>"
+        ".sipcompact{padding:14px 16px;margin-bottom:14px}.sipcompact h2{margin:0 0 10px;font-size:20px}"
+        ".sipcompact .hint{margin:0 0 10px}.sipgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}"
+        ".sipfield label{margin:0 0 4px;font-size:12px}.sipfield input{padding:8px 9px;height:36px}"
+        ".sipactions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}.sipactions .btn{margin-top:0;padding:9px 14px}"
+        "@media(max-width:650px){.sipgrid{grid-template-columns:1fr}}"
+        "</style>"
+        "<div class='card sipcompact'><h2>SIP / INTERCOM</h2>"
+        "<p class='small hint'>Configuracion SIP KORVO</p>"
+        "<form method=post action=/sip/save><input type=hidden name=enabled value=1><div class=sipgrid>"
+        "<div class=sipfield><label>Servidor Asterisk / PBX</label><input id=sip_server name=server maxlength=63 value='%s'></div>"
+        "<div class=sipfield><label>Puerto SIP</label><input id=sip_server_port name=server_port type=number min=1 max=65535 value='%u'></div>"
+        "<div class=sipfield><label>Puerto SIP local</label><input id=sip_local_port name=local_port type=number min=1 max=65535 value='%u'></div>"
+        "<div class=sipfield><label>Puerto RTP local</label><input id=sip_rtp_port name=rtp_port type=number min=1 max=65535 value='%u'></div>"
+        "<div class=sipfield><label>Extension KORVO</label><input id=sip_extension name=extension maxlength=31 value='%s'></div>"
+        "<div class=sipfield><label>Usuario SIP</label><input id=sip_username name=username maxlength=31 value='%s'></div>"
+        "<div class=sipfield><label>Password SIP</label><input id=sip_password name=password type=password maxlength=63 placeholder='conservar actual'></div>"
+        "<div class=sipfield><label>Nombre / Sala</label><input id=sip_display name=display_name maxlength=47 value='%s'></div>"
+        "<div class=sipfield><label>Extension operador / central</label><input id=sip_operator name=operator_extension maxlength=31 value='%s'></div>"
+        "<div class=sipfield><label>REGISTER expires (s)</label><input id=sip_expires name=expires type=number min=60 max=3600 value='%u'></div>"
+        "</div><div class=sipactions><button class=btn type=submit>GUARDAR SIP</button>"
+        "<button class=btn type=button onclick=sipDefaults()>DEFAULT SETTINGS</button></div></form>"
+        "<script>function sipDefaults(){"
+        "sip_server.value='192.168.10.10';sip_server_port.value='5060';sip_local_port.value='5060';"
+        "sip_rtp_port.value='4000';sip_extension.value='200';sip_username.value='200';"
+        "sip_password.value='korvo200';sip_display.value='Sala 01';sip_operator.value='300';sip_expires.value='300';}"
+        "</script></div>",
         sc.server, (unsigned)sc.server_port, (unsigned)sc.local_port, (unsigned)sc.rtp_port,
-        sc.extension, sc.username, sc.display_name, sc.operator_extension, (unsigned)sc.register_expires,
-        ss.engine_ready ? "ok" : "bad", ss.engine_ready ? "READY" : "NOT READY",
-        ss.registered ? "ok" : "bad", ss.registered ? "REGISTERED" : "NOT REGISTERED",
-        korvo_sip_state_name(ss.state),
-        ss.remote_number[0] ? ss.remote_number : "--",
-        ss.negotiated_codec[0] ? ss.negotiated_codec : "--",
-        ss.last_code,
-        ss.last_error[0] ? ss.last_error : "--");
+        sc.extension, sc.username, sc.display_name, sc.operator_extension, (unsigned)sc.register_expires);
     httpd_resp_sendstr_chunk(r, b);
 
     snprintf(b, bz,
@@ -1227,29 +1215,6 @@ static esp_err_t sip_save_p(httpd_req_t *r)
 
     esp_err_t e = korvo_sip_save_config(&c);
     if (e != ESP_OK) return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Configuracion SIP invalida");
-    return redir(r, "/intercom");
-}
-
-static esp_err_t sip_action_p(httpd_req_t *r)
-{
-    if (!guard(r)) return ESP_OK;
-    char b[512], action[32] = {0}, number[128] = {0};
-    if (body(r, b, sizeof(b)) != ESP_OK || !val(b, "action", action, sizeof(action)))
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Solicitud invalida");
-
-    esp_err_t e = ESP_ERR_INVALID_ARG;
-    if (!strcmp(action, "register")) e = korvo_sip_force_register();
-    else if (!strcmp(action, "call")) {
-        if (val(b, "number", number, sizeof(number)) && number[0]) e = korvo_sip_call(number);
-        else e = korvo_sip_call_default();
-    } else if (!strcmp(action, "answer")) e = korvo_sip_answer();
-    else if (!strcmp(action, "reject")) e = korvo_sip_reject();
-    else if (!strcmp(action, "hangup")) e = korvo_sip_hangup();
-
-    if (e != ESP_OK) {
-        char msg[128]; snprintf(msg, sizeof(msg), "SIP action failed: %s", esp_err_to_name(e));
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, msg);
-    }
     return redir(r, "/intercom");
 }
 
@@ -1971,12 +1936,6 @@ esp_err_t korvo_web_start(void)
             .uri = "/sip/save",
             .method = HTTP_POST,
             .handler = sip_save_p
-        },
-
-        {
-            .uri = "/sip/action",
-            .method = HTTP_POST,
-            .handler = sip_action_p
         },
 
         {
