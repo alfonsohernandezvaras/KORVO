@@ -218,15 +218,36 @@ static bool valid_cfg(const korvo_sip_config_t *cfg)
     return true;
 }
 
+/* KORVO_V21_34_NVS_MINIMAL
+ * NVS korvo_sip/cfg -> s_cfg -> motor SIP.
+ * Factory solo si NVS no existe o es invalida.
+ */
+/* KORVO_V21_35_SIP_RETRO
+ * Modelo antiguo: defaults RAM -> NVS si existe y valida.
+ * No auto-guarda factory al boot.
+ */
 static esp_err_t load_cfg(void)
 {
     defaults(&s_cfg);
-    ESP_LOGI(TAG, "SIP FACTORY cfg: enabled=%d server=%s:%u local=%u rtp=%u ext=%s user=%s display=%s central=%s expires=%u",
-             s_cfg.enabled, s_cfg.server, (unsigned)s_cfg.server_port,
-             (unsigned)s_cfg.local_port, (unsigned)s_cfg.rtp_port,
-             s_cfg.extension, s_cfg.username, s_cfg.display_name,
-             s_cfg.operator_extension, (unsigned)s_cfg.register_expires);
-    return ESP_OK;
+    nvs_handle_t h;
+    esp_err_t e = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (e == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "SIP CFG RETRO: NVS absent, using defaults");
+        return ESP_OK;
+    }
+    if (e != ESP_OK) return e;
+    size_t n = sizeof(s_cfg);
+    e = nvs_get_blob(h, NVS_KEY, &s_cfg, &n);
+    nvs_close(h);
+    if (e == ESP_ERR_NVS_NOT_FOUND || n != sizeof(s_cfg) || !valid_cfg(&s_cfg)) {
+        defaults(&s_cfg);
+        ESP_LOGW(TAG, "SIP CFG RETRO: NVS invalid, using defaults");
+        return ESP_OK;
+    }
+    ESP_LOGI(TAG, "SIP CFG RETRO: NVS loaded server=%s:%u ext=%s user=%s central=%s enabled=%d",
+             s_cfg.server,(unsigned)s_cfg.server_port,s_cfg.extension,s_cfg.username,
+             s_cfg.operator_extension,s_cfg.enabled);
+    return e;
 }
 
 static esp_err_t persist_cfg(void)
@@ -237,6 +258,8 @@ static esp_err_t persist_cfg(void)
     e = nvs_set_blob(h, NVS_KEY, &s_cfg, sizeof(s_cfg));
     if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);
+    if (e == ESP_OK) ESP_LOGI(TAG, "SIP NVS SAVE OK server=%s:%u ext=%s user=%s display=%s central=%s enabled=%d", s_cfg.server,(unsigned)s_cfg.server_port,s_cfg.extension,s_cfg.username,s_cfg.display_name,s_cfg.operator_extension,s_cfg.enabled);
+    else ESP_LOGE(TAG, "SIP NVS SAVE FAILED: %s", esp_err_to_name(e));
     return e;
 }
 
@@ -855,6 +878,8 @@ static void process_response(sip_runtime_t *rt, char *msg, const struct sockaddr
     if (!strcasecmp(method, "REGISTER")) {
         if (code == 200) {
             korvo_sip_config_t cfg; lock(); cfg = s_cfg; unlock();
+            /* KORVO_V21_36_CLEAN_SIP_BOOT: 200 OK Asterisk es autoridad. */
+            ESP_LOGI(TAG, "SIP REGISTER 200 OK -> REGISTERED");
             set_registered(true);
             rt->auth_valid = false;
             rt->register_auth_sent = false;

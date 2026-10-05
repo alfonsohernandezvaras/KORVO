@@ -790,19 +790,8 @@ static void gateway_hmi_task(void *arg)
                                         gw.control_ok,
                                         gw.gateway_ok);
 
-        /* V21.28: SIP/Asterisk independiente del Gateway. */
+        /* KORVO_V21_35_SIP_RETRO: MAIN solo observa; no fuerza REGISTER. */
         korvo_sip_get_status(&sip);
-        /* V21.29: recuperacion SIP/Asterisk. */
-        static uint32_t sip_recover_ticks = 0;
-        if (sip.enabled && sip.network_ready && !sip.registered &&
-            sip.state != KORVO_SIP_REGISTERING) {
-            if (++sip_recover_ticks >= 10) {
-                (void)korvo_sip_force_register();
-                sip_recover_ticks = 0;
-            }
-        } else {
-            sip_recover_ticks = 0;
-        }
         korvo_hmi_update_sip_button(sip.engine_ready,
                                     sip.enabled,
                                     sip.network_ready,
@@ -1182,6 +1171,16 @@ void app_main(void)
                  esp_err_to_name(korvo_net_err));
     } else {
         ESP_LOGI(TAG, "V21.19: KORVO NETWORK STARTED");
+
+        /* KORVO_V21_36_CLEAN_SIP_BOOT: unico arranque SIP en camino real. */
+        ESP_LOGI(TAG, "V21.36: Starting INTERCOM/SIP once...");
+        esp_err_t sip_boot_err = korvo_intercom_init();
+        if (sip_boot_err != ESP_OK) {
+            ESP_LOGE(TAG, "V21.36: INTERCOM/SIP init failed: %s", esp_err_to_name(sip_boot_err));
+        } else {
+            ESP_LOGI(TAG, "V21.36: INTERCOM/SIP engine started");
+        }
+
         /* V21.20 WEBSERVER START - existing server, no new polling */
         ESP_LOGI(TAG, "V21.20: Starting existing KORVO webserver...");
         korvo_hmi_update_webserver(false);
