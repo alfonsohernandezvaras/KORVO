@@ -553,6 +553,14 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     korvo_sip_get_status(&sip);
     bool sip_ok = sip.registered;
 
+    /* KORVO_V21_39_SIP_FLAG_TO_BUTTON: misma lectura validada por SIP OK/FAIL. */
+    if (s_v17_sip) {
+        uint32_t sip_color = sip_ok ? K26_BLUE :
+                             ((sip.enabled || sip.engine_ready || sip.network_ready)
+                              ? K26_ORANGE : K26_GRAY);
+        v17_color(s_v17_sip, sip_color);
+    }
+
     bool changed =
         st.started != last_started ||
         st.connected != last_connected ||
