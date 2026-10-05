@@ -790,8 +790,19 @@ static void gateway_hmi_task(void *arg)
                                         gw.control_ok,
                                         gw.gateway_ok);
 
-        /* KORVO_V21_35_SIP_RETRO: MAIN solo observa; no fuerza REGISTER. */
+        /* KORVO_V21_37_1_SIP_STATUS_BUS: misma fuente que WebServer. */
         korvo_sip_get_status(&sip);
+        static bool sip_wd_first = true;
+        static bool sip_wd_registered = false;
+        static korvo_sip_state_t sip_wd_state = KORVO_SIP_DISABLED;
+        if (sip_wd_first || sip.registered != sip_wd_registered || sip.state != sip_wd_state) {
+            ESP_LOGI(TAG, "SIP WATCHDOG: engine=%d enabled=%d net=%d registered=%d state=%s code=%d",
+                     sip.engine_ready, sip.enabled, sip.network_ready, sip.registered,
+                     korvo_sip_state_name(sip.state), sip.last_code);
+            sip_wd_registered = sip.registered;
+            sip_wd_state = sip.state;
+            sip_wd_first = false;
+        }
         korvo_hmi_update_sip_button(sip.engine_ready,
                                     sip.enabled,
                                     sip.network_ready,

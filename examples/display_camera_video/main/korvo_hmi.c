@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "korvo_bluetooth.h"
 #include "korvo_network.h"
+#include "korvo_sip.h" /* KORVO_V21_38_SIP_TOP_STATUS */
 #include "freertos/task.h"
 
 static const char *TAG = "korvo_hmi";
@@ -540,6 +541,7 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     static bool last_started = false;
     static bool last_connected = false;
     static bool last_web_ok = false;
+    static bool last_sip_registered = false;
     static uint16_t last_reason = 0xFFFF;
     static uint32_t last_disconnects = UINT32_MAX;
     static char last_ip[16] = "";
@@ -547,6 +549,9 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
 
     korvo_network_status_t st = {0};
     if (korvo_network_get_status(&st) != ESP_OK) return;
+    korvo_sip_status_t sip = {0};
+    korvo_sip_get_status(&sip);
+    bool sip_ok = sip.registered;
 
     bool changed =
         st.started != last_started ||
@@ -555,33 +560,36 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
         st.disconnect_count != last_disconnects ||
         strcmp(last_ip, st.config.ip) != 0 ||
         strcmp(last_ssid, st.config.ssid) != 0 ||
-        s_v21_26_web_ok != last_web_ok;
+        s_v21_26_web_ok != last_web_ok ||
+        sip_ok != last_sip_registered;
 
     if (!changed) return;
 
     last_started = st.started;
     last_connected = st.connected;
     last_web_ok = s_v21_26_web_ok;
+    last_sip_registered = sip_ok;
     last_reason = st.last_disconnect_reason;
     last_disconnects = st.disconnect_count;
     strlcpy(last_ip, st.config.ip, sizeof(last_ip));
     strlcpy(last_ssid, st.config.ssid, sizeof(last_ssid));
 
-    char text[160];
+    char text[192];
     if (st.connected) {
         snprintf(text, sizeof(text),
-                 "IP: %s | HOST: KORVO-01 | SSID: %s | WS: %s",
+                 "IP: %s | HOST: KORVO-01 | SSID: %s | WS: %s | SIP: %s",
                  st.config.ip[0] ? st.config.ip : "--",
                  st.config.ssid[0] ? st.config.ssid : "--",
-                 s_v21_26_web_ok ? "OK" : "FAIL");
+                 s_v21_26_web_ok ? "OK" : "FAIL",
+                 sip_ok ? "OK" : "FAIL");
     } else if (st.started) {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: %s | WS: FAIL | LINK DOWN R:%u",
+                 "IP: -- | HOST: KORVO-01 | SSID: %s | WS: FAIL | SIP: FAIL | LINK DOWN R:%u",
                  st.config.ssid[0] ? st.config.ssid : "--",
                  (unsigned)st.last_disconnect_reason);
     } else {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: -- | WS: FAIL");
+                 "IP: -- | HOST: KORVO-01 | SSID: -- | WS: FAIL | SIP: FAIL");
     }
 
     bsp_display_lock(0);
@@ -1258,17 +1266,15 @@ void korvo_hmi_update_gateway_status(const char *room,const char *gateway_name,b
 
     /* V21.23 presentation only: no network polling here. */
     bool gw_health=gateway_ok && control_ok;
-    bool ast_health=(sip_state && sip_state[0] &&
-                     strcmp(sip_state,"OFFLINE")!=0 &&
-                     strcmp(sip_state,"DOWN")!=0 &&
-                     strcmp(sip_state,"--")!=0);
-    bool sip_health=ast_health && sip_registered;
+    /* KORVO_V21_37_1_SIP_STATUS_BUS:
+     * Gateway NO repinta SIP. La unica autoridad visual SIP es
+     * korvo_hmi_update_sip_button(), alimentada por korvo_sip_get_status().
+     */
+    (void)sip_registered;
+    (void)sip_state;
     if(s_v17_gateway)
         v17_color(s_v17_gateway,gw_health?0x003A66:
-                  ((gateway_ok||control_ok)?0x8A4B08:0x202830));
-    if(s_v17_sip)
-        v17_color(s_v17_sip,sip_health?0x003A66:
-                  ((ast_health||sip_registered)?0x8A4B08:0x202830));}
+                  ((gateway_ok||control_ok)?0x8A4B08:0x202830));}
 void korvo_hmi_update_location(const char *ip,const char *host){
     if (!s_v17_location) {
         return;
