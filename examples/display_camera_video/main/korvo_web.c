@@ -43,19 +43,29 @@ static const char *STYLE =
     "<style>"
     "*{box-sizing:border-box}"
     "body{margin:0;background:#10151b;color:#e9eef4;font-family:Arial}"
-    ".top{background:#171f28;padding:18px 24px}"
-    ".wrap{max-width:960px;margin:24px auto;padding:0 16px}"
+    ".top{background:#171f28;padding:10px 14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}"
+    ".wrap{max-width:960px;margin:12px auto;padding:0 12px}"
     ".card{background:#18212b;border:1px solid #34404d;"
-    "border-radius:10px;padding:20px;margin-bottom:18px}"
-    "a{color:#8ecbff;text-decoration:none;margin-right:18px}"
-    "label{display:block;margin:13px 0 5px;color:#aebac6}"
-    "input,select{width:100%;padding:11px;border:1px solid #445363;"
+    "border-radius:10px;padding:14px 16px;margin-bottom:12px}"
+    "a{color:#8ecbff;text-decoration:none;margin-right:8px}"
+    "label{display:block;margin:0 0 4px;color:#aebac6;font-size:12px}"
+    "input,select{width:100%;min-width:0;padding:8px 9px;border:1px solid #445363;"
     "border-radius:6px;background:#0f151b;color:white}"
     "input[type=checkbox]{width:auto}"
-    ".btn{margin-top:18px;padding:11px 18px;border:0;"
+    ".btn{margin-top:10px;padding:9px 14px;border:0;"
     "border-radius:6px;font-weight:bold;cursor:pointer}"
     ".danger{background:#a53a3a;color:white}"
-    ".grid{display:grid;grid-template-columns:190px 1fr;gap:9px 14px}"
+    ".grid{display:grid;grid-template-columns:minmax(110px,165px) minmax(0,1fr);gap:6px 12px;font-size:13px}"
+    ".grid>div{min-width:0;overflow-wrap:anywhere}"
+    ".formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px}"
+    ".field{min-width:0}.actions{display:flex;gap:8px;flex-wrap:wrap}"
+    ".actions .btn{margin-top:8px}.card h2{font-size:18px;margin:0 0 10px}"
+    ".card h3{font-size:15px;margin:8px 0}.card p{margin:8px 0}"
+    "details summary{cursor:pointer;color:#8ecbff;padding:7px 0;font-size:13px}"
+    ".top a{padding:7px 8px;background:#202c37;border-radius:6px;font-size:12px;white-space:nowrap}"
+    "@media(max-width:650px){.formgrid{grid-template-columns:1fr}.wrap{padding:0 8px}"
+    ".card{padding:12px}.top{gap:5px;padding:9px}.top a{padding:8px 7px}"
+    ".grid{grid-template-columns:minmax(90px,40%) minmax(0,1fr)}.btn{min-height:40px}}"
     ".mono{font-family:monospace}"
     ".ok{color:#74d680}"
     ".bad{color:#ff7777}"
@@ -601,55 +611,53 @@ static esp_err_t net_g(httpd_req_t *r)
 
         "<div class=card>"
         "<h2>Red KORVO</h2>"
-        "<p>KORVO = cliente Wi-Fi STA. "
-        "El AP/bridge puede ser el Gateway KORVO, "
-        "un router, un access point o cualquier equipo compatible.</p>"
+        "<p class=small>Cliente Wi-Fi STA / bridge ETH01 o AP compatible.</p>"
 
-        "<form method=post action=/network>"
+        "<form method=post action=/network><div class=formgrid>"
 
-        "<label>SSID del AP / bridge</label>"
-        "<input name=ssid maxlength=32 value='%s'>"
+        "<div class=field><label>SSID del AP / bridge</label>"
+        "<input name=ssid maxlength=32 value='%s'></div>"
 
-        "<label>Clave Wi-Fi</label>"
-        "<input name=password type=password maxlength=63 value='%s'>"
+        "<div class=field><label>Clave Wi-Fi</label>"
+        "<input name=password type=password maxlength=63 value='%s'></div>"
 
-        "<label>IP fija KORVO</label>"
-        "<input name=ip maxlength=15 value='%s'>"
+        "<div class=field><label>IP fija KORVO</label>"
+        "<input name=ip maxlength=15 value='%s'></div>"
 
-        "<label>Mascara</label>"
-        "<input name=netmask maxlength=15 value='%s'>"
+        "<div class=field><label>Mascara</label>"
+        "<input name=netmask maxlength=15 value='%s'></div>"
 
-        "<label>Gateway de la LAN</label>"
-        "<input name=network_gateway maxlength=15 value='%s'>"
+        "<div class=field><label>Gateway de la LAN</label>"
+        "<input name=network_gateway maxlength=15 value='%s'></div>"
 
-        "<label>DNS</label>"
-        "<input name=dns maxlength=15 value='%s'>"
+        "<div class=field><label>DNS</label>"
+        "<input name=dns maxlength=15 value='%s'></div>"
 
-        "<label>IP Gateway sugerida para ENROLL</label>"
-        "<input name=gateway_node maxlength=15 value='%s'>"
+        "<div class=field><label>IP Gateway sugerida para ENROLL</label>"
+        "<input name=gateway_node maxlength=15 value='%s'></div>"
 
-        "<button class=btn>"
+        "</div><div class=actions><button class=btn>"
         "GUARDAR Y REINICIAR"
-        "</button>"
+        "</button></div>"
 
         "</form>"
 
-        "<p class=small>"
+        "<details><summary>Referencia de laboratorio</summary><p class=small>"
         "Laboratorio: korvo_wifi / "
         "KORVO 192.168.10.50 / "
         "LAN GW 192.168.10.1 / "
-        "Gateway sugerido 192.168.10.51 (no hardcoded para control)"
-        "</p>"
+        "Gateway sugerido 192.168.10.51"
+        "</p></details>"
 
         "</div>"
 
-        "<div class=card>"
-        "<form method=post action=/factory-network>"
+        "<details class=card><summary>Mantenimiento de red</summary>"
+        "<form method=post action=/factory-network onsubmit='return confirm(&quot;Restaurar red de fabrica?&quot;)'>"
         "<button class=btn>"
         "RESTAURAR RED DE FABRICA"
         "</button>"
         "</form>"
-        "</div>",
+        "</details>",
 
         c.ssid,
         c.password,
@@ -880,21 +888,23 @@ static esp_err_t gateway_g(httpd_req_t *r)
     head(r, "Gateway");
     snprintf(b, bz,
         "<div class=card><h2>Identidad KORVO</h2>"
-        "<p class=small>Name / Sala / Location son etiquetas de diagnostico. El pairing V1.2 se autoriza por IP.</p>"
+        "<p class=small>Identidad de sala / pairing por IP.</p>"
         "<form method=post action=/gateway>"
-        "<input type=hidden name=action value=local>"
-        "<label>Name</label><input name=name maxlength=63 value='%s'>"
-        "<label>Hostname / Sala</label><input name=hostname maxlength=63 value='%s'>"
-        "<label>Location</label><input name=location maxlength=63 value='%s'>"
+        "<input type=hidden name=action value=local><div class=formgrid>"
+        "<div class=field><label>Name</label><input name=name maxlength=63 value='%s'></div>"
+        "<div class=field><label>Hostname / Sala</label><input name=hostname maxlength=63 value='%s'></div>"
+        "<div class=field><label>Location</label><input name=location maxlength=63 value='%s'></div>"
+        "</div>"
         "<button class=btn>GUARDAR IDENTIDAD</button></form></div>"
 
         "<div class=card><h2>Gateway / Pairing por IP</h2>"
-        "<p>Configure aqui la IP del Gateway. En el Gateway configure la IP de esta KORVO. Cuando el WebSocket llegue desde las IP correctas, CONTROL queda habilitado.</p>"
+        "<p class=small>Configure la IP del Gateway; el control se autoriza por IP.</p>"
         "<form method=post action=/gateway><input type=hidden name=action value=save>"
         "<label>IP Gateway</label><input name=gateway_ip maxlength=15 value='%s'>"
         "<button class=btn>GUARDAR / CONECTAR</button></form>"
         "<form method=post action=/gateway><input type=hidden name=action value=verify><button class=btn>VERIFY GATEWAY IP</button></form>"
-        "<form method=post action=/gateway><input type=hidden name=action value=clear><button class='btn danger'>REMOVE GATEWAY IP</button></form>"
+        "<details><summary>Opciones avanzadas</summary>"
+        "<form method=post action=/gateway onsubmit='return confirm(&quot;Eliminar pairing del Gateway?&quot;)'><input type=hidden name=action value=clear><button class='btn danger'>REMOVE GATEWAY IP</button></form></details>"
         "</div>"
 
         "<div class=card><h2>Estado del enlace</h2><div class=grid>"
@@ -1021,7 +1031,7 @@ static esp_err_t intercom_g(httpd_req_t *r)
         "<script>function sipDefaults(){"
         "sip_server.value='192.168.10.10';sip_server_port.value='5060';sip_local_port.value='5060';"
         "sip_rtp_port.value='4000';sip_extension.value='200';sip_username.value='200';"
-        "sip_password.value='korvo200';sip_display.value='Sala 01';sip_operator.value='300';sip_expires.value='300';}"
+        "sip_password.value='';sip_display.value='Sala 01';sip_operator.value='300';sip_expires.value='300';}"
         "</script></div>",
         sc.server, (unsigned)sc.server_port, (unsigned)sc.local_port, (unsigned)sc.rtp_port,
         sc.extension, sc.username, sc.display_name, sc.operator_extension, (unsigned)sc.register_expires);
@@ -1152,7 +1162,7 @@ static esp_err_t firmware_g(httpd_req_t *r)
             "</div>"
 
             "<form method=post "
-            "action=/firmware/cancel>"
+            "action=/firmware/cancel onsubmit='return confirm(&quot;Eliminar update pendiente?&quot;)'>"
 
             "<button class='btn danger'>"
             "ELIMINAR UPDATE"
@@ -1200,13 +1210,7 @@ static esp_err_t firmware_g(httpd_req_t *r)
 
         "<h2>Subir firmware</h2>"
 
-        "<p>"
-        "El nombre del archivo no importa. "
-        "KORVO lee la cabecera ESP-IDF, "
-        "valida proyecto/version, "
-        "calcula SHA-256 y lo guarda internamente como "
-        "<span class=mono>korvo.bin</span>."
-        "</p>"
+        "<p class=small>Archivo .bin validado por version y SHA-256 antes de instalar.</p>"
 
         "<input id=f type=file "
         "accept='.bin,application/octet-stream'>"
@@ -1241,7 +1245,7 @@ static esp_err_t firmware_g(httpd_req_t *r)
         "durante la secuencia de arranque."
         "</p>"
 
-        "<form method=post action=/reboot>"
+        "<form method=post action=/reboot onsubmit='return confirm(&quot;Reiniciar KORVO ahora?&quot;)'>"
 
         "<button class='btn danger'>"
         "REBOOT KORVO"
