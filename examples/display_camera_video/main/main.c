@@ -46,7 +46,7 @@
 #include "freertos/semphr.h"
 
 #define KORVO_V21_8_RADIO_QUIET 1
-#define KORVO_V21_8_USB_HID_MOUSE 1
+#define KORVO_V21_8_USB_HID_MOUSE 0
 #define NUM_BUFS 2
 #define ALIGN_UP(num, align)    (((num) + ((align) - 1)) & ~((align) - 1))
 
@@ -1120,7 +1120,7 @@ void app_main(void)
     }
     ESP_LOGW(TAG, "V21.8 RADIO QUIET: no radio/network supervisor task");
     ESP_LOGW(TAG, "V21.8 RADIO QUIET: LCD/Touch/HMI/Camera/SD = ON");
-    ESP_LOGW(TAG, "V21.8 RADIO QUIET: USB HID mouse = ON");
+    ESP_LOGW(TAG, "V21.8 RADIO QUIET: USB HID mouse = OFF");
     ESP_LOGW(TAG, "====================================================");
 #endif
 

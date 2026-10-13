@@ -29,10 +29,6 @@ static lv_obj_t *s_storage_card_label = NULL;
 static lv_obj_t *s_v21_23_sd_keys=NULL;
 static lv_obj_t *s_v21_23_sd_vals=NULL;
 static lv_obj_t *s_gateway_footer = NULL;
-static lv_obj_t *s_volume_slider = NULL;
-static lv_obj_t *s_volume_label = NULL;
-static lv_obj_t *s_mic_slider = NULL;
-static lv_obj_t *s_mic_label = NULL;
 static lv_obj_t *s_video_resolution = NULL;
 /* KORVO_V19_TOP_VSYNC */
 extern uint32_t bsp_display_get_vsync_count(void);
@@ -255,115 +251,7 @@ static void bt_local_set_error(const char *text)
     lv_label_set_text(s_bt_error_label, (text && text[0]) ? text : "--");
 }
 
-static void volume_label_update(uint8_t value)
-{
-    if (!s_volume_label) return;
-    char text[24];
-    snprintf(text, sizeof(text), "VOL\n%u%%", (unsigned)value);
-    lv_label_set_text(s_volume_label, text);
-}
-
-/* KORVO_PHYSICAL_VOLUME_V1 - solo botones SET, VOL+, VOL-.
- * Los callbacks del driver NO llaman LVGL ni NVS. El timer LVGL
- * aplica cambios en el mismo contexto de los sliders existentes.
- * Sin audio nuevo, sin LED, sin inicializar Bluetooth.
- */
-static button_handle_t s_korvo_keys[BSP_BUTTON_NUM] = {0};
-static portMUX_TYPE s_key_mux = portMUX_INITIALIZER_UNLOCKED;
-static uint8_t s_key_events[3] = {0}; /* SET, VOL+, VOL- */
-static bool s_key_mic_mode = false; /* arranque: salida */
-
-static void korvo_key_event_cb(void *arg, void *usr_data)
-{
-    (void)arg;
-    unsigned idx = (unsigned)(uintptr_t)usr_data;
-    if (idx > 2) return;
-    portENTER_CRITICAL(&s_key_mux);
-    if (s_key_events[idx] < 20) s_key_events[idx]++;
-    portEXIT_CRITICAL(&s_key_mux);
-}
-
-static void korvo_key_timer_cb(lv_timer_t *timer)
-{
-    (void)timer;
-    uint8_t events[3];
-    portENTER_CRITICAL(&s_key_mux);
-    memcpy(events, s_key_events, sizeof(events));
-    memset(s_key_events, 0, sizeof(s_key_events));
-    portEXIT_CRITICAL(&s_key_mux);
-    for (unsigned n=0; n<events[0]; n++) {
-        s_key_mic_mode = !s_key_mic_mode;
-        ESP_LOGI(TAG, "SET: control %s", s_key_mic_mode ? "MIC" : "VOL");
-    }
-    int delta = 5 * ((int)events[1] - (int)events[2]);
-    if (!delta) return;
-    lv_obj_t *slider = s_key_mic_mode ? s_mic_slider : s_volume_slider;
-    if (!slider) return;
-    int old = lv_slider_get_value(slider);
-    int value = old + delta;
-    if (value < 0) value = 0;
-    if (value > 100) value = 100;
-    if (value == old) return;
-    lv_slider_set_value(slider, value, LV_ANIM_OFF);
-    /* Reutilizar EXACTAMENTE el flujo de slider ya estable (incluye NVS).
-       No crear ni abrir codecs nuevos. */
-    lv_obj_send_event(slider, LV_EVENT_RELEASED, NULL);
-}
-
-static void korvo_physical_volume_init(void)
-{
-    int count = 0;
-    esp_err_t e = bsp_iot_button_create(s_korvo_keys, &count, BSP_BUTTON_NUM);
-    if (e != ESP_OK || count < BSP_BUTTON_NUM) {
-        ESP_LOGW(TAG, "Botones fisicos no disponibles: %s", esp_err_to_name(e));
-        return;
-    }
-    e = iot_button_register_cb(s_korvo_keys[BSP_BUTTON_SET], BUTTON_SINGLE_CLICK,
-                               NULL, korvo_key_event_cb, (void *)(uintptr_t)0);
-    if (e == ESP_OK) e = iot_button_register_cb(s_korvo_keys[BSP_BUTTON_VOLP], BUTTON_SINGLE_CLICK,
-                                                NULL, korvo_key_event_cb, (void *)(uintptr_t)1);
-    if (e == ESP_OK) e = iot_button_register_cb(s_korvo_keys[BSP_BUTTON_VOLM], BUTTON_SINGLE_CLICK,
-                                                NULL, korvo_key_event_cb, (void *)(uintptr_t)2);
-    if (e != ESP_OK) { ESP_LOGW(TAG, "Registro botones: %s", esp_err_to_name(e)); return; }
-    lv_timer_create(korvo_key_timer_cb, 50, NULL);
-    ESP_LOGI(TAG, "Botones SET/VOL+/VOL- listos (sin BT, sin audio, sin LEDs)");
-}
-
-static void volume_slider_cb(lv_event_t *e)
-{
-    if (!s_volume_slider) return;
-    int value = lv_slider_get_value(s_volume_slider);
-    if (value < 0) value = 0;
-    if (value > 100) value = 100;
-
-    bool persist = lv_event_get_code(e) == LV_EVENT_RELEASED;
-    esp_err_t err = korvo_bluetooth_set_output_volume((uint8_t)value, persist);
-    if (err == ESP_OK) {
-        volume_label_update((uint8_t)value);
-    } else {
-        ESP_LOGW(TAG, "Volume update failed: %s", esp_err_to_name(err));
-    }
-}
-
-static void mic_label_update(uint8_t value)
-{
-    if (!s_mic_label) return;
-    char text[24];
-    snprintf(text, sizeof(text), "MIC\n%u%%", (unsigned)value);
-    lv_label_set_text(s_mic_label, text);
-}
-
-static void mic_slider_cb(lv_event_t *e)
-{
-    if (!s_mic_slider) return;
-    int value = lv_slider_get_value(s_mic_slider);
-    if (value < 0) value = 0;
-    if (value > 100) value = 100;
-    bool persist = lv_event_get_code(e) == LV_EVENT_RELEASED;
-    esp_err_t err = korvo_bluetooth_set_mic_gain((uint8_t)value, persist);
-    if (err == ESP_OK) mic_label_update((uint8_t)value);
-    else ESP_LOGW(TAG, "Mic gain update failed: %s", esp_err_to_name(err));
-}
+/* KORVO V22: controles fisicos de volumen y sliders retirados. */
 
 static void bt_open_cb(lv_event_t *e)
 {
@@ -687,10 +575,12 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
              (unsigned)st.last_disconnect_reason,
              (unsigned long)st.disconnect_count);
 }
+/* KORVO V22: callback de reproduccion SIP eliminado. */
+
+
 void korvo_hmi_init(void)
 {
     lv_obj_t *screen = lv_scr_act();
-    korvo_physical_volume_init();
 
     s_guide = lv_obj_create(screen);
     lv_obj_remove_style_all(s_guide);
@@ -753,7 +643,9 @@ s_v17_gateway=v17_make_flag(screen,"GATEWAY",70);
     lv_timer_create(v17_pulse_cb,100,NULL);
     /* V21.16 RESTORE MAIN HMI BUTTONS */
     if (s_v17_gateway) lv_obj_add_flag(s_v17_gateway, LV_OBJ_FLAG_CLICKABLE);
-    if (s_v17_sip)     lv_obj_add_flag(s_v17_sip, LV_OBJ_FLAG_CLICKABLE);
+    if (s_v17_sip) {
+        lv_obj_add_flag(s_v17_sip, LV_OBJ_FLAG_CLICKABLE);
+    }
     if (s_v17_reader)  lv_obj_add_flag(s_v17_reader, LV_OBJ_FLAG_CLICKABLE);
     if (s_v17_door)    lv_obj_add_flag(s_v17_door, LV_OBJ_FLAG_CLICKABLE);
     if (s_v17_sd)      lv_obj_add_flag(s_v17_sd, LV_OBJ_FLAG_CLICKABLE);
@@ -810,55 +702,8 @@ s_v21_23_sd_keys=lv_label_create(s_storage_card);
     s_storage_diag = s_storage_card;
     s_gateway_footer = NULL;
 
-    /* Right-edge audio volume, kept outside the central camera/face ROI.
-     * This controls the PCM sent to the HFP/SCO device, so it works for both
-     * WAV alarms and SIP receive audio. */
-    s_volume_slider = lv_slider_create(screen);
-    lv_obj_set_size(s_volume_slider, 22, 92);
-    lv_obj_align(s_volume_slider, LV_ALIGN_TOP_RIGHT, -24, 270);
-    lv_slider_set_range(s_volume_slider, 0, 100);
-    uint8_t initial_volume = korvo_bluetooth_get_output_volume();
-    lv_slider_set_value(s_volume_slider, initial_volume, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_volume_slider, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_volume_slider, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_volume_slider, lv_palette_main(LV_PALETTE_GREEN), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(s_volume_slider, lv_color_white(), LV_PART_KNOB);
-    lv_obj_add_event_cb(s_volume_slider, volume_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(s_volume_slider, volume_slider_cb, LV_EVENT_RELEASED, NULL);
-
-    s_volume_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(s_volume_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_volume_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_bg_color(s_volume_label, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_volume_label, LV_OPA_70, 0);
-    lv_obj_set_style_pad_all(s_volume_label, 4, 0);
-    lv_obj_align_to(s_volume_label, s_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
-    volume_label_update(initial_volume);
-    /* KORVO_V19: VSYNC moved to top IP/HOST bar. */
-
-/* Left-edge microphone gain. Same persisted setting used by Web UI and RTP TX. */
-    s_mic_slider = lv_slider_create(screen);
-    lv_obj_set_size(s_mic_slider, 22, 92);
-    lv_obj_align(s_mic_slider, LV_ALIGN_TOP_RIGHT, -24, 115);
-    lv_slider_set_range(s_mic_slider, 0, 100);
-    uint8_t initial_mic = korvo_bluetooth_get_mic_gain();
-    lv_slider_set_value(s_mic_slider, initial_mic, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_mic_slider, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_mic_slider, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_mic_slider, lv_palette_main(LV_PALETTE_GREEN), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(s_mic_slider, lv_color_white(), LV_PART_KNOB);
-    lv_obj_add_event_cb(s_mic_slider, mic_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(s_mic_slider, mic_slider_cb, LV_EVENT_RELEASED, NULL);
-    s_mic_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(s_mic_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(s_mic_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_bg_color(s_mic_label, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_mic_label, LV_OPA_70, 0);
-    lv_obj_set_style_pad_all(s_mic_label, 4, 0);
-    lv_obj_align_to(s_mic_label, s_mic_slider, LV_ALIGN_OUT_TOP_MID, 0, -6);
-    mic_label_update(initial_mic);
-    /* V17 Bluetooth panel opens from BLUETOOTH flag. */
-build_bluetooth_panel(screen);
+    /* KORVO V22: pantalla sin controles de audio. */
+    build_bluetooth_panel(screen);
     /* V21.9_1_LOCK_APPLIED */
     korvo_lock_hmi_no_scroll();
     /* V21.9_LOCK_APPLIED */
@@ -995,14 +840,7 @@ void korvo_hmi_track_face(const face_detection_t *face,
     if (s_gateway_footer != NULL && !s_bt_panel_visible) {
         lv_obj_move_foreground(s_gateway_footer);
     }
-    if (s_volume_slider != NULL && !s_bt_panel_visible) {
-        lv_obj_move_foreground(s_volume_slider);
-    }
-    if (s_volume_label != NULL && !s_bt_panel_visible) {
-        lv_obj_move_foreground(s_volume_label);
-    }
-    if (s_mic_slider != NULL && !s_bt_panel_visible) lv_obj_move_foreground(s_mic_slider);
-    if (s_mic_label != NULL && !s_bt_panel_visible) lv_obj_move_foreground(s_mic_label);
+
     /* V21.14: active configuration overlay owns the screen.
      * MAIN cards (including SD/storage diagnostics) may update their data,
      * but they are never allowed to remain above Wi-Fi/Bluetooth. */
@@ -1262,16 +1100,7 @@ void korvo_hmi_update_bluetooth(const korvo_bluetooth_status_t *bt)
              audio);
 
     bsp_display_lock(0);
-    if (s_volume_slider) {
-        uint8_t volume = korvo_bluetooth_get_output_volume();
-        lv_slider_set_value(s_volume_slider, volume, LV_ANIM_OFF);
-        volume_label_update(volume);
-    }
-    if (s_mic_slider) {
-        uint8_t mic = korvo_bluetooth_get_mic_gain();
-        lv_slider_set_value(s_mic_slider, mic, LV_ANIM_OFF);
-        mic_label_update(mic);
-    }
+    /* KORVO V22.1: sin sincronizacion de sliders de audio. */
     if (s_bt_status_label) lv_label_set_text(s_bt_status_label, status);
     if (s_bt_power_btn_label) lv_label_set_text(s_bt_power_btn_label, bt->enabled ? "APAGAR" : "ENCENDER");
     if (s_bt_scan_btn_label) lv_label_set_text(s_bt_scan_btn_label, bt->scanning ? "ESCANEANDO..." : "SCAN");
