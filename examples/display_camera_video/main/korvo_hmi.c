@@ -585,19 +585,19 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     char text[192];
     if (st.connected) {
         snprintf(text, sizeof(text),
-                 "IP: %s | HOST: KORVO-01 | SSID: %s | WS: %s | SIP: %s",
+                 "IP: %s | HOST: KORVO-01 | SSID: %s | WS: %s | SIP: %s | V.2.1.1",
                  st.config.ip[0] ? st.config.ip : "--",
                  st.config.ssid[0] ? st.config.ssid : "--",
                  s_v21_26_web_ok ? "OK" : "FAIL",
                  sip_ok ? "OK" : "FAIL");
     } else if (st.started) {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: %s | WS: FAIL | SIP: FAIL | LINK DOWN R:%u",
+                 "IP: -- | HOST: KORVO-01 | SSID: %s | WS: FAIL | SIP: FAIL | V.2.1.1 | LINK DOWN R:%u",
                  st.config.ssid[0] ? st.config.ssid : "--",
                  (unsigned)st.last_disconnect_reason);
     } else {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: -- | WS: FAIL | SIP: FAIL");
+                 "IP: -- | HOST: KORVO-01 | SSID: -- | WS: FAIL | SIP: FAIL | V.2.1.1");
     }
 
     bsp_display_lock(0);
