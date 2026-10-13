@@ -10,6 +10,9 @@
 #include "korvo_network.h"
 #include "korvo_sip.h" /* KORVO_V21_38_SIP_TOP_STATUS */
 #include "freertos/task.h"
+#include "iot_button.h"
+#include "freertos/portmacro.h"
+
 
 static const char *TAG = "korvo_hmi";
 /* V21.23 HMI HEALTH ARCH */
@@ -258,6 +261,72 @@ static void volume_label_update(uint8_t value)
     char text[24];
     snprintf(text, sizeof(text), "VOL\n%u%%", (unsigned)value);
     lv_label_set_text(s_volume_label, text);
+}
+
+/* KORVO_PHYSICAL_VOLUME_V1 - solo botones SET, VOL+, VOL-.
+ * Los callbacks del driver NO llaman LVGL ni NVS. El timer LVGL
+ * aplica cambios en el mismo contexto de los sliders existentes.
+ * Sin audio nuevo, sin LED, sin inicializar Bluetooth.
+ */
+static button_handle_t s_korvo_keys[BSP_BUTTON_NUM] = {0};
+static portMUX_TYPE s_key_mux = portMUX_INITIALIZER_UNLOCKED;
+static uint8_t s_key_events[3] = {0}; /* SET, VOL+, VOL- */
+static bool s_key_mic_mode = false; /* arranque: salida */
+
+static void korvo_key_event_cb(void *arg, void *usr_data)
+{
+    (void)arg;
+    unsigned idx = (unsigned)(uintptr_t)usr_data;
+    if (idx > 2) return;
+    portENTER_CRITICAL(&s_key_mux);
+    if (s_key_events[idx] < 20) s_key_events[idx]++;
+    portEXIT_CRITICAL(&s_key_mux);
+}
+
+static void korvo_key_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    uint8_t events[3];
+    portENTER_CRITICAL(&s_key_mux);
+    memcpy(events, s_key_events, sizeof(events));
+    memset(s_key_events, 0, sizeof(s_key_events));
+    portEXIT_CRITICAL(&s_key_mux);
+    for (unsigned n=0; n<events[0]; n++) {
+        s_key_mic_mode = !s_key_mic_mode;
+        ESP_LOGI(TAG, "SET: control %s", s_key_mic_mode ? "MIC" : "VOL");
+    }
+    int delta = 5 * ((int)events[1] - (int)events[2]);
+    if (!delta) return;
+    lv_obj_t *slider = s_key_mic_mode ? s_mic_slider : s_volume_slider;
+    if (!slider) return;
+    int old = lv_slider_get_value(slider);
+    int value = old + delta;
+    if (value < 0) value = 0;
+    if (value > 100) value = 100;
+    if (value == old) return;
+    lv_slider_set_value(slider, value, LV_ANIM_OFF);
+    /* Reutilizar EXACTAMENTE el flujo de slider ya estable (incluye NVS).
+       No crear ni abrir codecs nuevos. */
+    lv_obj_send_event(slider, LV_EVENT_RELEASED, NULL);
+}
+
+static void korvo_physical_volume_init(void)
+{
+    int count = 0;
+    esp_err_t e = bsp_iot_button_create(s_korvo_keys, &count, BSP_BUTTON_NUM);
+    if (e != ESP_OK || count < BSP_BUTTON_NUM) {
+        ESP_LOGW(TAG, "Botones fisicos no disponibles: %s", esp_err_to_name(e));
+        return;
+    }
+    e = iot_button_register_cb(s_korvo_keys[BSP_BUTTON_SET], BUTTON_SINGLE_CLICK,
+                               NULL, korvo_key_event_cb, (void *)(uintptr_t)0);
+    if (e == ESP_OK) e = iot_button_register_cb(s_korvo_keys[BSP_BUTTON_VOLP], BUTTON_SINGLE_CLICK,
+                                                NULL, korvo_key_event_cb, (void *)(uintptr_t)1);
+    if (e == ESP_OK) e = iot_button_register_cb(s_korvo_keys[BSP_BUTTON_VOLM], BUTTON_SINGLE_CLICK,
+                                                NULL, korvo_key_event_cb, (void *)(uintptr_t)2);
+    if (e != ESP_OK) { ESP_LOGW(TAG, "Registro botones: %s", esp_err_to_name(e)); return; }
+    lv_timer_create(korvo_key_timer_cb, 50, NULL);
+    ESP_LOGI(TAG, "Botones SET/VOL+/VOL- listos (sin BT, sin audio, sin LEDs)");
 }
 
 static void volume_slider_cb(lv_event_t *e)
@@ -621,6 +690,7 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
 void korvo_hmi_init(void)
 {
     lv_obj_t *screen = lv_scr_act();
+    korvo_physical_volume_init();
 
     s_guide = lv_obj_create(screen);
     lv_obj_remove_style_all(s_guide);
