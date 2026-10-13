@@ -4,9 +4,6 @@
 #include "korvo_storage.h"
 #include "korvo_update.h"
 #include "korvo_sip.h"
-#include "korvo_bluetooth.h"
-#include "korvo_audio_bridge.h"
-#include "korvo_alarm.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -559,28 +556,16 @@ static esp_err_t status_g(httpd_req_t *r)
     httpd_resp_sendstr_chunk(r, b);
 
     korvo_sip_status_t sip = {0};
-    korvo_bluetooth_status_t bt = {0};
-    korvo_audio_bridge_status_t audio = {0};
     korvo_sip_get_status(&sip);
-    korvo_bluetooth_get_status(&bt);
-    korvo_audio_bridge_get_status(&audio);
     snprintf(b, bz,
         "<div class=card><h2>Intercom KORVO</h2><div class=grid>"
         "<div>SIP</div><div class=%s>%s / %s</div>"
         "<div>Remoto</div><div class=mono>%s</div>"
         "<div>Codec RTP</div><div>%s</div>"
-        "<div>Bluetooth HFP AG</div><div class=%s>%s</div>"
-        "<div>Dispositivo HF</div><div class=mono>%s %s</div>"
-        "<div>Audio SCO</div><div class=%s>%s / %s</div>"
-        "<div>RTP bridge</div><div class=%s>%s</div>"
-        "</div><p><a href='/intercom'>Configurar SIP + Bluetooth</a></p></div>",
+        "</div><p><a href='/intercom'>Configurar SIP</a></p></div>",
         sip.registered ? "ok" : "bad", sip.registered ? "REGISTERED" : "NOT REGISTERED", korvo_sip_state_name(sip.state),
         sip.remote_number[0] ? sip.remote_number : "--",
-        sip.negotiated_codec[0] ? sip.negotiated_codec : "--",
-        bt.slc_connected ? "ok" : "bad", bt.slc_connected ? "CONNECTED" : (bt.enabled ? "READY" : "DISABLED"),
-        bt.peer_name[0] ? bt.peer_name : "--", bt.peer_mac[0] ? bt.peer_mac : "",
-        bt.audio_connected ? "ok" : "bad", bt.audio_connected ? "CONNECTED" : "DISCONNECTED", bt.codec[0] ? bt.codec : "--",
-        audio.running ? "ok" : "bad", audio.running ? "RUNNING" : "STOPPED");
+        sip.negotiated_codec[0] ? sip.negotiated_codec : "--");
     httpd_resp_sendstr_chunk(r, b);
 
     free(b);
@@ -983,7 +968,7 @@ static esp_err_t gateway_p(httpd_req_t *r)
 
 
 /* ============================================================
- * INTERCOM / SIP + BLUETOOTH HFP AG
+ * INTERCOM / SIP
  * ============================================================ */
 
 static esp_err_t sip_status_api_g(httpd_req_t *r)
@@ -996,42 +981,13 @@ static esp_err_t sip_status_api_g(httpd_req_t *r)
     return httpd_resp_sendstr(r, j);
 }
 
-static esp_err_t bt_status_api_g(httpd_req_t *r)
-{
-    if (!guard(r)) return ESP_OK;
-    char j[1024];
-    korvo_bluetooth_status_json(j, sizeof(j));
-    httpd_resp_set_type(r, "application/json");
-    httpd_resp_set_hdr(r, "Cache-Control", "no-store");
-    return httpd_resp_sendstr(r, j);
-}
-
 static esp_err_t intercom_g(httpd_req_t *r)
 {
     if (!guard(r)) return ESP_OK;
 
     /* KORVO_V21_33_INTERCOM_COMPACT */
     korvo_sip_config_t sc = {0};
-    korvo_bluetooth_config_t bc = {0};
-    korvo_bluetooth_status_t bs = {0};
-    korvo_audio_bridge_status_t as = {0};
-    korvo_alarm_status_t alarm = {0};
     korvo_sip_get_config(&sc);
-    korvo_bluetooth_get_config(&bc);
-    korvo_bluetooth_get_status(&bs);
-
-    char bt_link_form[320] = {0};
-    if (bs.slc_connected || bs.connecting) {
-        snprintf(bt_link_form, sizeof(bt_link_form),
-                 "<form method=post action=/bluetooth/action style='display:inline'><input type=hidden name=action value=disconnect><button class=btn>%s</button></form> ",
-                 bs.connecting && !bs.slc_connected ? "CANCELAR" : "DISCONNECT");
-    } else if (bs.paired && bs.peer_mac[0]) {
-        snprintf(bt_link_form, sizeof(bt_link_form),
-                 "<form method=post action=/bluetooth/action style='display:inline'><input type=hidden name=action value=connect><input type=hidden name=mac value='%s'><button class=btn>CONNECT</button></form> ",
-                 bs.peer_mac);
-    }
-    korvo_audio_bridge_get_status(&as);
-    korvo_alarm_get_status(&alarm);
 
     const size_t bz = 7600;
     char *b = malloc(bz);
@@ -1071,121 +1027,6 @@ static esp_err_t intercom_g(httpd_req_t *r)
         sc.extension, sc.username, sc.display_name, sc.operator_extension, (unsigned)sc.register_expires);
     httpd_resp_sendstr_chunk(r, b);
 
-    snprintf(b, bz,
-        "<div class=card id=bluetooth><h2>BLUETOOTH / HFP AUDIO GATEWAY</h2>"
-        "<p class=small>KORVO actua como HFP AG (telefono). El parlante/manos libres debe ser HFP HF.</p>"
-        "<form method=post action=/bluetooth/save>"
-        "<label><input type=checkbox name=enabled value=1 %s> Bluetooth HFP habilitado</label>"
-        "<label><input type=checkbox name=auto_connect value=1 %s> Mantener HFP conectado al ultimo HF (supervisor)</label>"
-        "<label>Nombre Bluetooth KORVO</label><input name=local_name maxlength=63 value='%s'>"
-        "<label>PIN legacy</label><input name=pin maxlength=16 value='%s'>"
-        "<button class=btn>GUARDAR BLUETOOTH</button></form>"
-        "<hr><h3>NIVELES DE AUDIO</h3>"
-        "<form method=post action=/audio/levels>"
-        "<label>Salida auricular / interfaz: %u%%</label><input name=out type=range min=0 max=100 value='%u'>"
-        "<label>Microfono TX: %u%%</label><input name=mic type=range min=0 max=100 value='%u'>"
-        "<button class=btn>GUARDAR NIVELES</button></form>"
-        "<hr><div class=grid>"
-        "<div>HFP AG engine</div><div class=%s>%s</div>"
-        "<div>PAIR</div><div class=%s>%s</div>"
-        "<div>HF conectado</div><div class=%s>%s</div>"
-        "<div>Peer</div><div class=mono>%s %s</div>"
-        "<div>Audio SCO/eSCO</div><div class=%s>%s</div>"
-        "<div>Codec HFP</div><div>%s</div>"
-        "<div>RTP bridge</div><div class=%s>%s</div>"
-        "<div>RTP RX / TX</div><div>%lu / %lu</div>"
-        "<div>RTP RX dropped</div><div>%lu</div>"
-        "<div>MIC dropped</div><div>%lu</div>"
-        "<div>SCO underruns</div><div>%lu</div>"
-        "<div>Error</div><div class=bad>%s</div>"
-        "</div>"
-        "<form method=post action=/bluetooth/action style='display:inline'><input type=hidden name=action value=power_toggle><button class=btn>%s BLUETOOTH</button></form> "
-        "<form method=post action=/bluetooth/action style='display:inline'><input type=hidden name=action value=scan><button class=btn>SCAN</button></form> "
-        "%s"
-        "<form method=post action=/bluetooth/action style='display:inline'><input type=hidden name=action value=forget><button class='btn danger'>FORGET</button></form>"
-        "</div>",
-        bc.enabled ? "checked" : "", bc.auto_connect ? "checked" : "",
-        bc.local_name, bc.pin,
-        (unsigned)korvo_bluetooth_get_output_volume(), (unsigned)korvo_bluetooth_get_output_volume(),
-        (unsigned)korvo_bluetooth_get_mic_gain(), (unsigned)korvo_bluetooth_get_mic_gain(),
-        (bc.enabled && bs.engine_ready) ? "ok" : "bad",
-        !bc.enabled ? "DISABLED" : (bs.engine_ready ? "READY" : "STARTING"),
-        bs.paired ? "ok" : "bad", bs.paired ? "PAIRED" : "NOT PAIRED",
-        bs.slc_connected ? "ok" : (bs.connecting ? "" : "bad"),
-        bs.slc_connected ? "CONNECTED" : (bs.connecting ? "CONNECTING" : "DISCONNECTED"),
-        bs.peer_name[0] ? bs.peer_name : "--", bs.peer_mac[0] ? bs.peer_mac : "",
-        bs.audio_connected ? "ok" : "bad", bs.audio_connected ? "CONNECTED" : "DISCONNECTED",
-        bs.codec[0] ? bs.codec : "--",
-        as.running ? "ok" : "bad", as.running ? "RUNNING" : "STOPPED",
-        (unsigned long)as.rx_packets, (unsigned long)as.tx_packets,
-        (unsigned long)as.rx_dropped, (unsigned long)as.mic_dropped,
-        (unsigned long)as.sco_underruns,
-        bs.last_error[0] ? bs.last_error : "--",
-        bc.enabled ? "APAGAR" : "ENCENDER",
-        bt_link_form);
-    httpd_resp_sendstr_chunk(r, b);
-    if (!bc.enabled) {
-        httpd_resp_sendstr_chunk(r,
-            "<div class=card><p class=bad><b>Bluetooth HFP esta DESHABILITADO.</b> "
-            "Marque Bluetooth HFP habilitado, pulse GUARDAR BLUETOOTH y luego SCAN.</p></div>");
-    }
-
-    snprintf(b, bz,
-        "<div class=card><h2>ALARMAS BLUETOOTH</h2>"
-        "<p class=small>Seleccione una alarma WAV y pulse PROBAR. La KORVO abre el audio HFP y reproduce el archivo desde la SD. WAV requerido: PCM mono, 8000 Hz, 16 bits.</p>"
-        "<form method=post action=/alarm/test>"
-        "<label>Tipo de alarma</label><select name=type>"
-        "<option value=1 %s>1 - TIMBRE</option>"
-        "<option value=2 %s>2 - DOBLE BEEP</option>"
-        "<option value=3 %s>3 - ASCENDENTE</option>"
-        "<option value=4 %s>4 - SIRENA</option>"
-        "<option value=5 %s>5 - CRITICA</option>"
-        "</select>"
-        "<button class=btn>PROBAR</button></form>"
-        "<hr><div class=grid>"
-        "<div>Seleccionada</div><div>%s</div>"
-        "<div>Estado</div><div class=%s>%s</div>"
-        "<div>Error</div><div class=bad>%s</div>"
-        "</div></div>",
-        alarm.selected == 1 ? "selected" : "",
-        alarm.selected == 2 ? "selected" : "",
-        alarm.selected == 3 ? "selected" : "",
-        alarm.selected == 4 ? "selected" : "",
-        alarm.selected == 5 ? "selected" : "",
-        korvo_alarm_name(alarm.selected),
-        alarm.playing ? "ok" : "", alarm.playing ? "REPRODUCIENDO" : "IDLE",
-        alarm.last_error[0] ? alarm.last_error : "--");
-    httpd_resp_sendstr_chunk(r, b);
-
-    httpd_resp_sendstr_chunk(r, "<div class=card id=bt-devices><h2>Dispositivos Bluetooth encontrados</h2>");
-    if (bs.scanning) {
-        httpd_resp_sendstr_chunk(r, "<p class=ok>SCAN ACTIVO... espere unos 10 segundos.</p><script>setTimeout(function(){location.href='/intercom#bt-devices'},2500)</script>");
-    }
-    if (!bs.device_count) {
-        httpd_resp_sendstr_chunk(r, "<p class=small>No hay dispositivos en la lista. Ponga el manos libres en pairing y pulse SCAN.</p>");
-    } else {
-        httpd_resp_sendstr_chunk(r, "<div class=grid><div><b>Dispositivo</b></div><div><b>Accion</b></div>");
-        for (size_t i = 0; i < bs.device_count; ++i) {
-            char row[640];
-            bool same_peer = bs.peer_mac[0] && !strcmp(bs.peer_mac, bs.devices[i].mac);
-            const char *action_label = (bs.slc_connected && same_peer) ? "CONNECTED" :
-                                       ((bs.connecting && same_peer) ? "CONNECTING..." :
-                                        ((bs.paired && same_peer) ? "CONNECT" : "PAIR / CONNECT"));
-            const char *disabled = ((bs.slc_connected || bs.connecting) && same_peer) ? " disabled" : "";
-            snprintf(row, sizeof(row),
-                "<div><span class=mono>%s</span><br><span class=small>%s &nbsp; RSSI %d dBm</span></div>"
-                "<div><form method=post action=/bluetooth/action>"
-                "<input type=hidden name=action value=connect><input type=hidden name=mac value='%s'>"
-                "<button class=btn%s>%s</button></form></div>",
-                bs.devices[i].name[0] ? bs.devices[i].name : "--",
-                bs.devices[i].mac, bs.devices[i].rssi, bs.devices[i].mac,
-                disabled, action_label);
-            httpd_resp_sendstr_chunk(r, row);
-        }
-        httpd_resp_sendstr_chunk(r, "</div>");
-    }
-    httpd_resp_sendstr_chunk(r, "</div>");
-
     free(b);
     web_diag("INTERCOM end");
     foot(r);
@@ -1217,96 +1058,6 @@ static esp_err_t sip_save_p(httpd_req_t *r)
     if (e != ESP_OK) return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Configuracion SIP invalida");
     return redir(r, "/intercom");
 }
-
-static esp_err_t bt_save_p(httpd_req_t *r)
-{
-    if (!guard(r)) return ESP_OK;
-    char b[1024];
-    if (body(r, b, sizeof(b)) != ESP_OK) return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Solicitud invalida");
-
-    korvo_bluetooth_config_t c = {0};
-    korvo_bluetooth_get_config(&c);
-    char x[128] = {0};
-    c.enabled = val(b, "enabled", x, sizeof(x));
-    c.auto_connect = val(b, "auto_connect", x, sizeof(x));
-    if (val(b, "local_name", x, sizeof(x))) snprintf(c.local_name, sizeof(c.local_name), "%s", x);
-    if (val(b, "pin", x, sizeof(x))) snprintf(c.pin, sizeof(c.pin), "%s", x);
-
-    esp_err_t e = korvo_bluetooth_save_config(&c);
-    if (e != ESP_OK) return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Configuracion Bluetooth invalida");
-    return redir(r, "/intercom#bluetooth");
-}
-
-static esp_err_t audio_levels_p(httpd_req_t *r)
-{
-    if (!guard(r)) return ESP_OK;
-    char b[256], x[32] = {0};
-    if (body(r, b, sizeof(b)) != ESP_OK)
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Solicitud invalida");
-    if (val(b, "out", x, sizeof(x))) {
-        unsigned long v = strtoul(x, NULL, 10); if (v > 100) v = 100;
-        (void)korvo_bluetooth_set_output_volume((uint8_t)v, true);
-    }
-    if (val(b, "mic", x, sizeof(x))) {
-        unsigned long v = strtoul(x, NULL, 10); if (v > 100) v = 100;
-        (void)korvo_bluetooth_set_mic_gain((uint8_t)v, true);
-    }
-    return redir(r, "/intercom#bluetooth");
-}
-
-static esp_err_t bt_action_p(httpd_req_t *r)
-{
-    if (!guard(r)) return ESP_OK;
-    char b[512], action[32] = {0}, mac[32] = {0};
-    if (body(r, b, sizeof(b)) != ESP_OK || !val(b, "action", action, sizeof(action)))
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Solicitud invalida");
-
-    esp_err_t e = ESP_ERR_INVALID_ARG;
-    if (!strcmp(action, "power_toggle")) {
-        korvo_bluetooth_config_t c = {0};
-        e = korvo_bluetooth_get_config(&c);
-        if (e == ESP_OK) {
-            c.enabled = !c.enabled;
-            e = korvo_bluetooth_save_config(&c);
-        }
-    } else if (!strcmp(action, "scan")) e = korvo_bluetooth_scan();
-    else if (!strcmp(action, "connect")) {
-        if (val(b, "mac", mac, sizeof(mac))) e = korvo_bluetooth_connect(mac);
-    } else if (!strcmp(action, "disconnect")) e = korvo_bluetooth_disconnect();
-    else if (!strcmp(action, "forget")) e = korvo_bluetooth_forget();
-    else if (!strcmp(action, "audio_connect")) e = korvo_bluetooth_audio_connect();
-    else if (!strcmp(action, "audio_disconnect")) e = korvo_bluetooth_audio_disconnect();
-
-    if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) {
-        char msg[128]; snprintf(msg, sizeof(msg), "Bluetooth action failed: %s", esp_err_to_name(e));
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, msg);
-    }
-    /* Keep the browser at the Bluetooth area instead of jumping to page top.
-       ESP_ERR_INVALID_STATE is shown through Bluetooth last_error (e.g. disabled engine). */
-    return redir(r, !strcmp(action, "scan") ? "/intercom#bt-devices" : "/intercom#bluetooth");
-}
-
-static esp_err_t alarm_test_p(httpd_req_t *r)
-{
-    if (!guard(r)) return ESP_OK;
-    char b[256], x[32] = {0};
-    if (body(r, b, sizeof(b)) != ESP_OK || !val(b, "type", x, sizeof(x)))
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Solicitud invalida");
-
-    unsigned long type = strtoul(x, NULL, 10);
-    if (type < KORVO_ALARM_TIMBRE || type > KORVO_ALARM_CRITICA)
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "Tipo de alarma invalido");
-
-    esp_err_t e = korvo_alarm_test((uint8_t)type);
-    if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "Alarm test failed: %s", esp_err_to_name(e));
-        return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, msg);
-    }
-    return redir(r, "/intercom");
-}
-
-
 
 /* ============================================================
  * FIRMWARE
@@ -1938,29 +1689,9 @@ esp_err_t korvo_web_start(void)
             .handler = sip_save_p
         },
 
-        {
-            .uri = "/bluetooth/save",
-            .method = HTTP_POST,
-            .handler = bt_save_p
-        },
 
-        {
-            .uri = "/bluetooth/action",
-            .method = HTTP_POST,
-            .handler = bt_action_p
-        },
 
-        {
-            .uri = "/audio/levels",
-            .method = HTTP_POST,
-            .handler = audio_levels_p
-        },
 
-        {
-            .uri = "/alarm/test",
-            .method = HTTP_POST,
-            .handler = alarm_test_p
-        },
 
         {
             .uri = "/api/korvo/sip/status",
@@ -1968,11 +1699,6 @@ esp_err_t korvo_web_start(void)
             .handler = sip_status_api_g
         },
 
-        {
-            .uri = "/api/korvo/bluetooth/status",
-            .method = HTTP_GET,
-            .handler = bt_status_api_g
-        },
 
         {
             .uri = "/api/device/identity",
@@ -2035,7 +1761,7 @@ esp_err_t korvo_web_start(void)
 
     ESP_LOGI(
         TAG,
-        "Web admin + SIP/HFP intercom + firmware manager ready");
+        "Web admin + SIP intercom + firmware manager ready");
 
     return ESP_OK;
 }
