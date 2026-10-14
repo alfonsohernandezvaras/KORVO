@@ -148,13 +148,63 @@ static bool valid_cfg(const korvo_network_config_t *c)
         valid_ip(c->gateway_node_ip);
 }
 
+
 static esp_err_t load_cfg(korvo_network_config_t *c)
 {
-    /* V21.18.1: fixed compiled network; stale NVS cannot override it. */
+    /* KORVO_V21_23_RESTORE_NVS_WIFI
+     * Los valores compilados son solo defaults. La fuente persistente
+     * es NVS 'korvo_net', las mismas claves de save_config().
+     */
     if (!c) return ESP_ERR_INVALID_ARG;
     defaults(c);
-    ESP_LOGI(TAG, "FIXED CFG ssid=%s ip=%s mask=%s gw=%s dns=%s",
-             c->ssid, c->ip, c->netmask, c->network_gateway, c->dns);
+
+    nvs_handle_t h;
+    esp_err_t e = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (e == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "Wi-Fi NVS sin configuracion: usando defaults");
+        return ESP_OK;
+    }
+    if (e != ESP_OK) {
+        ESP_LOGE(TAG, "Wi-Fi NVS no disponible: %s", esp_err_to_name(e));
+        return e;
+    }
+
+    korvo_network_config_t saved = *c;
+    size_t n;
+    bool any_saved = false;
+    bool bad_saved = false;
+
+#define READ_NVS_STR(key, field) do {                                   \
+        n = sizeof(saved.field);                                        \
+        esp_err_t r = nvs_get_str(h, (key), saved.field, &n);           \
+        if (r == ESP_OK) any_saved = true;                              \
+        else if (r != ESP_ERR_NVS_NOT_FOUND) {                          \
+            ESP_LOGW(TAG, "NVS Wi-Fi clave %s: %s", (key),               \
+                     esp_err_to_name(r));                               \
+            bad_saved = true;                                           \
+        }                                                               \
+    } while (0)
+
+    READ_NVS_STR("ssid", ssid);
+    READ_NVS_STR("pass", password);
+    READ_NVS_STR("ip", ip);
+    READ_NVS_STR("mask", netmask);
+    READ_NVS_STR("netgw", network_gateway);
+    READ_NVS_STR("dns", dns);
+    READ_NVS_STR("node", gateway_node_ip);
+#undef READ_NVS_STR
+
+    nvs_close(h);
+
+    if (bad_saved || !valid_cfg(&saved)) {
+        ESP_LOGE(TAG, "Wi-Fi NVS invalida: no se reemplaza por una configuracion parcial");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *c = saved;
+    ESP_LOGI(TAG, "Wi-Fi CFG origen=%s ssid=%s ip=%s gw=%s gateway-io=%s",
+             any_saved ? "NVS" : "DEFAULT",
+             c->ssid, c->ip, c->network_gateway, c->gateway_node_ip);
     return ESP_OK;
 }
 
