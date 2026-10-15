@@ -1,5 +1,6 @@
 #include "esp_heap_caps.h"
 #include "korvo_hmi.h"
+#include "korvo_gateway.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -59,6 +60,11 @@ static volatile bool s_v21_26_web_ok = false;
 #define K26_ORANGE  0xB06000u
 #define K26_BLUE    0x005EA8u
 #define K26_GREEN   0x008A3Bu
+#define K26_RED     0xA02020u
+
+static uint32_t v63_gateway_flag_color(bool configured, bool visible,
+                                      bool map_ok, bool control_ok, bool gateway_ready);
+
 
 
 
@@ -1163,7 +1169,7 @@ void korvo_hmi_update_gateway_status(const char *room,const char *gateway_name,b
  bool sip_registered,const char *sip_state,bool bt_enabled,bool bt_paired,bool bt_connected,const char *bt_peer)
 {
     (void)room;(void)gateway_name;(void)control_ok;(void)sip_registered;(void)sip_state;(void)bt_peer;
-    bsp_display_lock(0); v17_color(s_v17_gateway,gateway_ok?0x0066CC:0x202830);
+    bsp_display_lock(0); /* Gateway painted below by canonical V6.3 state logic. */
     if(!bt_enabled)v17_color(s_v17_bt,0x202830); else if(bt_connected)v17_color(s_v17_bt,0x0088AA);
     else if(bt_paired)v17_color(s_v17_bt,0x0055CC); else v17_color(s_v17_bt,0x404080);
     if (s_bt_panel_visible && s_bt_panel) {
@@ -1172,16 +1178,23 @@ void korvo_hmi_update_gateway_status(const char *room,const char *gateway_name,b
     bsp_display_unlock();
 
     /* V21.23 presentation only: no network polling here. */
-    bool gw_health=gateway_ok && control_ok;
+    korvo_gateway_status_t gw = {0};
+    korvo_gateway_get_status(&gw);
+    uint32_t gw_color = v63_gateway_flag_color(gw.paired,
+        gateway_ok || gw.websocket_connected,
+        gw.remote_map_ok, control_ok, gateway_ok);
     /* KORVO_V21_37_1_SIP_STATUS_BUS:
      * Gateway NO repinta SIP. La unica autoridad visual SIP es
      * korvo_hmi_update_sip_button(), alimentada por korvo_sip_get_status().
      */
     (void)sip_registered;
     (void)sip_state;
-    if(s_v17_gateway)
-        v17_color(s_v17_gateway,gw_health?0x003A66:
-                  ((gateway_ok||control_ok)?0x8A4B08:0x202830));}
+    if(s_v17_gateway) {
+        bsp_display_lock(0);
+        v17_color(s_v17_gateway, gw_color);
+        bsp_display_unlock();
+    }
+}
 void korvo_hmi_update_location(const char *ip,const char *host){
     if (!s_v17_location) {
         return;
@@ -1261,6 +1274,20 @@ void korvo_hmi_update_sip_button(bool engine_ready,
     bsp_display_unlock();
 }
 
+/* KORVO_V6_3_GATEWAY_FLAG_DICTIONARY */
+/* Pure presentation logic. Does not gate pairing, GPIO or door commands. */
+static uint32_t v63_gateway_flag_color(bool configured, bool visible,
+                                      bool map_ok, bool control_ok, bool gateway_ready)
+{
+    if (!configured || !visible) return K26_GRAY;
+    korvo_gateway_status_t gw = {0};
+    korvo_gateway_get_status(&gw);
+    if (gw.dictionary_state == KORVO_DICT_MISMATCH) return K26_RED;
+    if (!map_ok || !control_ok || !gateway_ready ||
+        gw.dictionary_state != KORVO_DICT_OK) return K26_ORANGE;
+    return K26_BLUE;
+}
+
 /* KORVO_V21_27_GATEWAY_STATE
  * Estado base: GRIS=no visible, NARANJO=visible/incompleto, AZUL=READY.
  * Verde parpadeante se reserva para actividad real posterior.
@@ -1272,15 +1299,8 @@ void korvo_hmi_update_gateway_button(bool configured,
                                      bool gateway_ready)
 {
     if (!s_v17_gateway) return;
-    uint32_t color = K26_GRAY;
-
-    if (!configured || !visible) {
-        color = K26_GRAY;
-    } else if (!map_ok || !control_ok || !gateway_ready) {
-        color = K26_ORANGE;
-    } else {
-        color = K26_BLUE;
-    }
+    uint32_t color = v63_gateway_flag_color(configured, visible,
+                                             map_ok, control_ok, gateway_ready);
 
     bsp_display_lock(0);
     v17_color(s_v17_gateway, color);

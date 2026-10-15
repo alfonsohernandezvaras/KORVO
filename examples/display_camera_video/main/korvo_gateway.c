@@ -1,5 +1,6 @@
 #include "korvo_gateway.h"
 #include "korvo_network.h"
+#include "korvo_protocol.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -70,6 +71,72 @@ static void lock(void)
 static void unlock(void)
 {
     if (s_lock) xSemaphoreGive(s_lock);
+}
+
+/* KORVO_V6_2_DICTIONARY_CHECK */
+/* FNV-1a: ID, direccion, nombre ASCII, NUL. Diagnostico, no autenticacion. */
+static uint32_t dictionary_fingerprint(void)
+{
+    uint32_t hash = UINT32_C(2166136261);
+    for (unsigned id=0; id<=255; ++id) {
+        if (!korvo_protocol_is_valid((uint8_t)id)) continue;
+        const char *name=korvo_protocol_name((korvo_message_id_t)id);
+        hash=(hash^(uint8_t)id)*UINT32_C(16777619);
+        hash=(hash^(uint8_t)korvo_protocol_direction((korvo_message_id_t)id))*UINT32_C(16777619);
+        for (const unsigned char *p=(const unsigned char *)name; *p; ++p)
+            hash=(hash^*p)*UINT32_C(16777619);
+        hash=(hash^0u)*UINT32_C(16777619);
+    }
+    return hash;
+}
+static unsigned dictionary_count(void)
+{
+    unsigned n=0;
+    for (unsigned id=0; id<=255; ++id)
+        if (korvo_protocol_is_valid((uint8_t)id)) ++n;
+    return n;
+}
+static void dictionary_check(cJSON *data)
+{
+    if (!cJSON_IsObject(data)) return;
+    cJSON *v=cJSON_GetObjectItemCaseSensitive(data,"dictionary_version");
+    cJSON *count=cJSON_GetObjectItemCaseSensitive(data,"dictionary_count");
+    cJSON *fp=cJSON_GetObjectItemCaseSensitive(data,"dictionary_fingerprint");
+    bool valid=false;
+    uint32_t remote=0;
+    if (cJSON_IsString(fp) && fp->valuestring && strlen(fp->valuestring)==8) {
+        valid=true;
+        for (const char *p=fp->valuestring; *p; ++p) {
+            unsigned nibble;
+            if (*p>='0' && *p<='9') nibble=(unsigned)(*p-'0');
+            else if (*p>='a' && *p<='f') nibble=(unsigned)(*p-'a'+10);
+            else if (*p>='A' && *p<='F') nibble=(unsigned)(*p-'A'+10);
+            else {valid=false; break;}
+            remote=(remote<<4)|nibble;
+        }
+    }
+    korvo_dictionary_state_t next=KORVO_DICT_UNKNOWN;
+    if (cJSON_IsNumber(v) && cJSON_IsNumber(count) && valid &&
+        v->valuedouble>=0 && v->valuedouble<=4294967295.0 &&
+        count->valuedouble>=0 && count->valuedouble<=256 &&
+        (double)(uint32_t)v->valuedouble==v->valuedouble &&
+        (double)(unsigned)count->valuedouble==count->valuedouble) {
+        next=((uint32_t)v->valuedouble==KORVO_PROTOCOL_DICTIONARY_VERSION &&
+              (unsigned)count->valuedouble==dictionary_count() &&
+              remote==dictionary_fingerprint()) ? KORVO_DICT_OK : KORVO_DICT_MISMATCH;
+    }
+    lock();
+    bool changed=s_status.dictionary_state!=next;
+    s_status.dictionary_state=next;
+    s_status.dictionary_remote_version=cJSON_IsNumber(v) && v->valuedouble>=0 && v->valuedouble<=4294967295.0 ? (uint32_t)v->valuedouble : 0;
+    s_status.dictionary_remote_fingerprint=valid?remote:0;
+    unlock();
+    if (changed) ESP_LOGI(TAG,"Dictionary: %s (local v%u/%u/%08lX, remote v%lu/%08lX)",
+        next==KORVO_DICT_OK?"DICT OK":next==KORVO_DICT_MISMATCH?"DICT MISMATCH":"DICT UNKNOWN",
+        (unsigned)KORVO_PROTOCOL_DICTIONARY_VERSION,dictionary_count(),
+        (unsigned long)dictionary_fingerprint(),
+        (unsigned long)(cJSON_IsNumber(v) && v->valuedouble>=0 && v->valuedouble<=4294967295.0 ? (uint32_t)v->valuedouble : 0),
+        (unsigned long)(valid?remote:0));
 }
 
 static uint64_t now_ms(void)
@@ -512,6 +579,7 @@ static esp_err_t send_auth(const char *nonce, const char *challenge_pair_id)
 static void parse_gateway_status(cJSON *data)
 {
     if (!cJSON_IsObject(data)) return;
+    dictionary_check(data);
     korvo_gateway_identity_t observed = {0};
     bool have_observed = false;
     bool reported_control = false;
@@ -599,6 +667,7 @@ static void handle_ws_json(const char *text)
         json_string(data, "ip", id.ip, sizeof(id.ip));
         json_string(data, "mac", id.mac, sizeof(id.mac));
         bool reported = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(data, "control_ok"));
+        dictionary_check(data);
         lock();
         if (!strcmp(role, "gateway") && identity_complete(&id)) s_status.observed_gateway = id;
         s_gateway_reported_control = reported;
@@ -646,6 +715,9 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t event_id, void *e
         lock();
         s_status.websocket_connected = false;
         s_status.pair_auth_ok = false;
+        s_status.dictionary_state = KORVO_DICT_UNKNOWN;
+        s_status.dictionary_remote_version = 0;
+        s_status.dictionary_remote_fingerprint = 0;
         s_gateway_reported_control = false;
         recompute_locked();
         unlock();

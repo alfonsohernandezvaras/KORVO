@@ -49,6 +49,12 @@ typedef struct {
 
 typedef void (*korvo_gateway_event_listener_t)(const korvo_gateway_event_t *event, void *ctx);
 
+typedef enum {
+    KORVO_DICT_UNKNOWN = 0,
+    KORVO_DICT_OK,
+    KORVO_DICT_MISMATCH
+} korvo_dictionary_state_t;
+
 typedef struct {
     korvo_gateway_identity_t local;
     korvo_gateway_identity_t expected_gateway;
@@ -67,6 +73,9 @@ typedef struct {
     bool websocket_connected;
     bool pair_auth_ok; /* legacy name: true when IP-authorized WS is live */
     bool gateway_ok;
+    korvo_dictionary_state_t dictionary_state; /* solo diagnostico */
+    uint32_t dictionary_remote_version;
+    uint32_t dictionary_remote_fingerprint;
     bool remote_map_ok;
     uint8_t remote_map_percent;
     uint32_t remote_map_revision;

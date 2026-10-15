@@ -1183,6 +1183,23 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG, "V21.19: KORVO NETWORK STARTED");
 
+        /* KORVO_V6_4_GATEWAY_INIT_BEFORE_INTERCOM
+         * Initialize the Gateway state/NVS/WebSocket manager before any
+         * listener registration, intercom or WebServer requests.
+         * Do not enable the legacy boot branch (would duplicate services).
+         */
+        ESP_LOGI(TAG, "V6.4: Starting Gateway state/NVS manager...");
+        esp_err_t gw_boot_err = korvo_gateway_init();
+        if (gw_boot_err != ESP_OK) {
+            ESP_LOGE(TAG, "V6.4: Gateway init failed: %s", esp_err_to_name(gw_boot_err));
+        } else {
+            esp_err_t gw_listener_err = korvo_gateway_add_listener(v17_gateway_event_hmi, NULL);
+            if (gw_listener_err != ESP_OK) {
+                ESP_LOGW(TAG, "V6.4: Gateway HMI listener: %s", esp_err_to_name(gw_listener_err));
+            }
+            ESP_LOGI(TAG, "V6.4: Gateway state/NVS manager ready");
+        }
+
         /* KORVO_V21_36_CLEAN_SIP_BOOT: unico arranque SIP en camino real. */
         ESP_LOGI(TAG, "V21.36: Starting INTERCOM/SIP once...");
         esp_err_t sip_boot_err = korvo_intercom_init();

@@ -912,6 +912,7 @@ static esp_err_t gateway_g(httpd_req_t *r)
         "<div>Gateway detectado</div><div class=mono>%s</div>"
         "<div>Hostname / Sala</div><div class=mono>%s</div>"
         "<div>Location</div><div class=mono>%s</div>"
+        "<div>Configuracion NVS</div><div class=%s>%s</div>"
         "<div>WebSocket</div><div class=%s>%s</div>"
         "<div>GATEWAY</div><div class=%s>%s</div>"
         "<div>CONTROL</div><div class=%s>%s</div>"
@@ -924,6 +925,8 @@ static esp_err_t gateway_g(httpd_req_t *r)
         gw.observed_gateway.name[0] ? gw.observed_gateway.name : "--",
         gw.observed_gateway.hostname[0] ? gw.observed_gateway.hostname : "--",
         gw.observed_gateway.location[0] ? gw.observed_gateway.location : "--",
+        /* KORVO_V6_5_2_NVS_ESTADO */
+        gw.expected_gateway.ip[0] ? "ok" : "bad", gw.expected_gateway.ip[0] ? "GUARDADA" : "NO CONFIGURADA",
         gw.websocket_connected ? "ok" : "bad", gw.websocket_connected ? "CONNECTED" : "DISCONNECTED",
         gw.gateway_ok ? "ok" : "bad", gw.gateway_ok ? "PAIRED" : "NOT PAIRED",
         gw.control_ok ? "ok" : "bad", gw.control_ok ? "OK" : "BLOCKED",
