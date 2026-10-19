@@ -521,7 +521,10 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
      * Do not paint SIP here: gateway_hmi_task owns that flag. */
     korvo_gateway_status_t gw_sip = {0};
     korvo_gateway_get_status(&gw_sip);
-    bool sip_ok = gw_sip.websocket_connected && gw_sip.sip_registered;
+    /* V25-P05 SIP GATEWAY DIAGNOSTICO: misma validacion que boton y web. */
+    bool sip_ok = st.connected && gw_sip.websocket_connected &&
+                  gw_sip.dictionary_state == KORVO_DICT_OK &&
+                  gw_sip.sip_registered;
 
     bool changed =
         st.started != last_started ||
@@ -1251,8 +1254,9 @@ void korvo_hmi_update_gateway_sip(bool websocket_connected,
                                   const char *state)
 {
     if (!s_v17_sip) return;
+    /* V25-P05 SIP GATEWAY DIAGNOSTICO: verde solo llamada publicada. */
     bool in_call = false;
-    if (state && state[0]) {
+    if (websocket_connected && registered && state && state[0]) {
         in_call = strstr(state, "calling") != NULL ||
                   strstr(state, "ringing") != NULL ||
                   strstr(state, "incoming") != NULL ||

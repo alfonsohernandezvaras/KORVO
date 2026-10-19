@@ -556,12 +556,27 @@ static esp_err_t status_g(httpd_req_t *r)
         "<div>WebSocket</div><div class=%s>%s</div>"
         "<div>PAIR</div><div class=%s>%s</div>"
         "<div>CONTROL GPIO</div><div class=%s>%s</div>"
+        /* V25-P05 SIP GATEWAY DIAGNOSTICO: fuente sys.status, no SIP local. */
+        "<div>SIP Gateway</div><div class=%s>%s</div>"
+        "<div>SIP Registered</div><div class=%s>%s</div>"
+        "<div>SIP State</div><div class=mono>%s</div>"
+        "<div>Diccionario V2</div><div class=%s>%s</div>"
         "</div><p><a href='/gateway'>Configurar Gateway IP</a></p></div>",
         gw.local.hostname,
         gw.expected_gateway.ip[0] ? gw.expected_gateway.ip : "NO CONFIGURADO",
         gw.websocket_connected ? "ok" : "bad", gw.websocket_connected ? "CONNECTED" : "DISCONNECTED",
         gw.gateway_ok ? "ok" : "bad", gw.gateway_ok ? "PAIRED" : "NOT PAIRED",
-        gw.control_ok ? "ok" : "bad", gw.control_ok ? "ENABLED" : "BLOCKED");
+        gw.control_ok ? "ok" : "bad", gw.control_ok ? "ENABLED" : "BLOCKED",
+        gw.websocket_connected ? "ok" : "bad", gw.websocket_connected ? "ONLINE" : "OFFLINE",
+        (gw.websocket_connected && gw.dictionary_state == KORVO_DICT_OK && gw.sip_registered) ? "ok" : "bad",
+        !gw.websocket_connected ? "SIN ENLACE" :
+            gw.dictionary_state != KORVO_DICT_OK ? "DICT INVALIDO" :
+            gw.sip_registered ? "YES" : "NO",
+        (gw.websocket_connected && gw.dictionary_state == KORVO_DICT_OK) ?
+            (gw.sip_state[0] ? gw.sip_state : "--") : "--",
+        gw.dictionary_state == KORVO_DICT_OK ? "ok" : "bad",
+        gw.dictionary_state == KORVO_DICT_OK ? "OK" :
+            gw.dictionary_state == KORVO_DICT_MISMATCH ? "MISMATCH" : "UNKNOWN");
     httpd_resp_sendstr_chunk(r, b);
 
 
