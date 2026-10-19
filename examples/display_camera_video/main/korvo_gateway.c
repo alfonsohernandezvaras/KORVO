@@ -48,6 +48,11 @@ static esp_websocket_client_handle_t s_ws;
 static TaskHandle_t s_manager_task;
 static bool s_started;
 static bool s_gateway_reported_control;
+/* KORVO_V25_P06_SIP_GATEWAY_AUTHORITY: solo datos del Gateway2. */
+#define GW_SIP_STATUS_TTL_MS 45000
+static bool s_sip_status_valid;
+static uint64_t s_sip_status_rx_ms;
+
 static bool s_auth_failed;
 static bool s_force_restart;
 static uint64_t s_last_tx_ms;
@@ -630,8 +635,16 @@ static void parse_gateway_status(cJSON *data)
     s_status.remote_map_ok = remote_map_ok;
     s_status.remote_map_percent = remote_map_percent;
     s_status.remote_map_revision = remote_map_revision;
-    s_status.sip_registered = sip_registered;
-    if (sip_state[0]) copy_text(s_status.sip_state, sizeof(s_status.sip_state), sip_state);
+    /* Un sys.status sin objeto SIP NO significa registro perdido. */
+    if (cJSON_IsObject(sip)) {
+        cJSON *registered = cJSON_GetObjectItemCaseSensitive(sip, "registered");
+        if (cJSON_IsBool(registered)) {
+            s_status.sip_registered = cJSON_IsTrue(registered);
+            s_sip_status_valid = true;
+            s_sip_status_rx_ms = now_ms();
+        }
+        if (sip_state[0]) copy_text(s_status.sip_state, sizeof(s_status.sip_state), sip_state);
+    }
     s_status.last_rx_ms = now_ms();
     recompute_locked();
     unlock();
@@ -676,10 +689,15 @@ static void handle_ws_json(const char *text)
         unlock();
     } else if (!strcmp(type, "status") && !strcmp(name, "sys.status")) {
         parse_gateway_status(data);
-    } else if (!strncmp(name, "sip.", 4)) {
+    } else if (!strcmp(type, "event") &&
+               (!strcmp(name, "sip.registered") ||
+                !strcmp(name, "sip.unregistered") ||
+                !strcmp(name, "sip.engine_unavailable"))) {
+        /* Solo eventos explicitos de registro; no inferir desde sip.call.*. */
         lock();
-        if (!strcmp(name, "sip.registered")) s_status.sip_registered = true;
-        else if (!strcmp(name, "sip.unregistered") || !strcmp(name, "sip.engine_unavailable")) s_status.sip_registered = false;
+        s_status.sip_registered = !strcmp(name, "sip.registered");
+        s_sip_status_valid = true;
+        s_sip_status_rx_ms = now_ms();
         copy_text(s_status.sip_state, sizeof(s_status.sip_state), name + 4);
         recompute_locked();
         unlock();
@@ -703,6 +721,10 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t event_id, void *e
         lock();
         s_status.websocket_connected = true;
         s_status.pair_auth_ok = true;
+        s_sip_status_valid = false;
+        s_sip_status_rx_ms = 0;
+        s_status.sip_registered = false;
+        s_status.sip_state[0] = '\0';
         s_gateway_reported_control = false;
         s_auth_failed = false;
         s_status.last_rx_ms = now_ms();
@@ -716,6 +738,10 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t event_id, void *e
         lock();
         s_status.websocket_connected = false;
         s_status.pair_auth_ok = false;
+        s_sip_status_valid = false;
+        s_sip_status_rx_ms = 0;
+        s_status.sip_registered = false;
+        s_status.sip_state[0] = '\0';
         s_status.dictionary_state = KORVO_DICT_UNKNOWN;
         s_status.dictionary_remote_version = 0;
         s_status.dictionary_remote_fingerprint = 0;
@@ -758,6 +784,10 @@ static void stop_ws(void)
     lock();
     s_status.websocket_connected = false;
     s_status.pair_auth_ok = false;
+    s_sip_status_valid = false;
+    s_sip_status_rx_ms = 0;
+    s_status.sip_registered = false;
+    s_status.sip_state[0] = '\0';
     s_gateway_reported_control = false;
     recompute_locked();
     unlock();
@@ -996,7 +1026,18 @@ esp_err_t korvo_gateway_clear_pairing(void)
 void korvo_gateway_get_status(korvo_gateway_status_t *status)
 {
     if (!status) return;
-    lock(); recompute_locked(); *status = s_status; unlock();
+    lock();
+    recompute_locked();
+    *status = s_status;
+    /* Estado publico solo si el Gateway lo confirmo en la sesion vigente. */
+    uint64_t sip_now = now_ms();
+    if (!s_status.websocket_connected || !s_sip_status_valid ||
+        sip_now < s_sip_status_rx_ms ||
+        sip_now - s_sip_status_rx_ms > GW_SIP_STATUS_TTL_MS) {
+        status->sip_registered = false;
+        status->sip_state[0] = '\0';
+    }
+    unlock();
 }
 
 const char *korvo_gateway_state_name(korvo_gateway_state_t state)
