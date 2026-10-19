@@ -509,20 +509,19 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     static uint32_t last_disconnects = UINT32_MAX;
     static char last_ip[16] = "";
     static char last_ssid[33] = "";
+    static char last_tag[64] = "";
 
+    /* V25-P04 TAG HOST: misma identidad que el formulario web. */
+    korvo_gateway_status_t gw = {0};
+    korvo_gateway_get_status(&gw);
+    const char *tag = gw.local.name[0] ? gw.local.name : "--";
     korvo_network_status_t st = {0};
     if (korvo_network_get_status(&st) != ESP_OK) return;
-    korvo_sip_status_t sip = {0};
-    korvo_sip_get_status(&sip);
-    bool sip_ok = sip.registered;
-
-    /* KORVO_V21_39_SIP_FLAG_TO_BUTTON: misma lectura validada por SIP OK/FAIL. */
-    if (s_v17_sip) {
-        uint32_t sip_color = sip_ok ? K26_BLUE :
-                             ((sip.enabled || sip.engine_ready || sip.network_ready)
-                              ? K26_ORANGE : K26_GRAY);
-        v17_color(s_v17_sip, sip_color);
-    }
+    /* KORVO_V25_P02_GATEWAY_SIP_HMI: Gateway2 is the only SIP authority.
+     * Do not paint SIP here: gateway_hmi_task owns that flag. */
+    korvo_gateway_status_t gw_sip = {0};
+    korvo_gateway_get_status(&gw_sip);
+    bool sip_ok = gw_sip.websocket_connected && gw_sip.sip_registered;
 
     bool changed =
         st.started != last_started ||
@@ -531,6 +530,7 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
         st.disconnect_count != last_disconnects ||
         strcmp(last_ip, st.config.ip) != 0 ||
         strcmp(last_ssid, st.config.ssid) != 0 ||
+        strcmp(last_tag, tag) != 0 ||
         s_v21_26_web_ok != last_web_ok ||
         sip_ok != last_sip_registered;
 
@@ -544,23 +544,26 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     last_disconnects = st.disconnect_count;
     strlcpy(last_ip, st.config.ip, sizeof(last_ip));
     strlcpy(last_ssid, st.config.ssid, sizeof(last_ssid));
+    strlcpy(last_tag, tag, sizeof(last_tag));
 
     char text[192];
     if (st.connected) {
         snprintf(text, sizeof(text),
-                 "IP: %s | HOST: KORVO-01 | SSID: %s | WS: %s | SIP: %s | V.2.1.1",
+                 "IP: %s | HOST: %.63s | SSID: %s | WS: %s | SIP: %s | V.2.1.1",
                  st.config.ip[0] ? st.config.ip : "--",
+                 tag,
                  st.config.ssid[0] ? st.config.ssid : "--",
                  s_v21_26_web_ok ? "OK" : "FAIL",
                  sip_ok ? "OK" : "FAIL");
     } else if (st.started) {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: %s | WS: FAIL | SIP: FAIL | V.2.1.1 | LINK DOWN R:%u",
+                 "IP: -- | HOST: %.63s | SSID: %s | WS: FAIL | SIP: FAIL | V.2.1.1 | LINK DOWN R:%u",
+                 tag,
                  st.config.ssid[0] ? st.config.ssid : "--",
                  (unsigned)st.last_disconnect_reason);
     } else {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: KORVO-01 | SSID: -- | WS: FAIL | SIP: FAIL | V.2.1.1");
+                 "IP: -- | HOST: %.63s | SSID: -- | WS: FAIL | SIP: FAIL | V.2.1.1", tag);
     }
 
     bsp_display_lock(0);
@@ -1239,6 +1242,30 @@ void korvo_hmi_update_sd_button(bool sd_ok, bool fs_ok, bool structure_ok)
     } else {
         v17_color(s_v17_sd, K26_BLUE);
     }
+    bsp_display_unlock();
+}
+
+/* KORVO_V25_P02_GATEWAY_SIP_HMI: live Gateway2 SIP status; no local SIP reads. */
+void korvo_hmi_update_gateway_sip(bool websocket_connected,
+                                  bool registered,
+                                  const char *state)
+{
+    if (!s_v17_sip) return;
+    bool in_call = false;
+    if (state && state[0]) {
+        in_call = strstr(state, "calling") != NULL ||
+                  strstr(state, "ringing") != NULL ||
+                  strstr(state, "incoming") != NULL ||
+                  strstr(state, "active") != NULL ||
+                  strstr(state, "connected") != NULL ||
+                  strstr(state, "established") != NULL ||
+                  strstr(state, "talking") != NULL;
+    }
+    uint32_t color = !websocket_connected ? K26_GRAY :
+                     in_call ? K26_GREEN :
+                     registered ? K26_BLUE : K26_ORANGE;
+    bsp_display_lock(0);
+    v17_color(s_v17_sip, color);
     bsp_display_unlock();
 }
 

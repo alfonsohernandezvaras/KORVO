@@ -776,7 +776,6 @@ static void gateway_hmi_task(void *arg)
     (void)arg;
     /* Keep the large Bluetooth scan snapshot out of this 4 KB task stack. */
     static korvo_gateway_status_t gw;
-    static korvo_sip_status_t sip;
     static korvo_bluetooth_status_t bt;
     static korvo_network_status_t net;
     for (;;) {
@@ -790,34 +789,35 @@ static void gateway_hmi_task(void *arg)
                                         gw.control_ok,
                                         gw.gateway_ok);
 
-        /* KORVO_V21_37_1_SIP_STATUS_BUS: misma fuente que WebServer. */
-        korvo_sip_get_status(&sip);
-        static bool sip_wd_first = true;
-        static bool sip_wd_registered = false;
-        static korvo_sip_state_t sip_wd_state = KORVO_SIP_DISABLED;
-        if (sip_wd_first || sip.registered != sip_wd_registered || sip.state != sip_wd_state) {
-            ESP_LOGI(TAG, "SIP WATCHDOG: engine=%d enabled=%d net=%d registered=%d state=%s code=%d",
-                     sip.engine_ready, sip.enabled, sip.network_ready, sip.registered,
-                     korvo_sip_state_name(sip.state), sip.last_code);
-            sip_wd_registered = sip.registered;
-            sip_wd_state = sip.state;
-            sip_wd_first = false;
+        /* KORVO_V25_P02_GATEWAY_SIP_HMI: SIP belongs to Gateway2.
+         * No local SIP query, no extra network request or task. */
+        static bool sip_first = true;
+        static bool sip_last_ws = false;
+        static bool sip_last_registered = false;
+        static char sip_last_state[KORVO_GW_STATE_MAX] = "";
+        if (sip_first || gw.websocket_connected != sip_last_ws ||
+            gw.sip_registered != sip_last_registered ||
+            strcmp(gw.sip_state, sip_last_state) != 0) {
+            ESP_LOGI(TAG, "P02 GATEWAY SIP: ws=%d registered=%d state=%s",
+                     gw.websocket_connected, gw.sip_registered, gw.sip_state);
+            sip_last_ws = gw.websocket_connected;
+            sip_last_registered = gw.sip_registered;
+            snprintf(sip_last_state, sizeof(sip_last_state), "%s", gw.sip_state);
+            sip_first = false;
         }
-        korvo_hmi_update_sip_button(sip.engine_ready,
-                                    sip.enabled,
-                                    sip.network_ready,
-                                    sip.registered,
-                                    (int)sip.state);
+        korvo_hmi_update_gateway_sip(gw.websocket_connected,
+                                     gw.sip_registered, gw.sip_state);
         korvo_bluetooth_get_status(&bt);
         korvo_network_get_status(&net);
         korvo_hmi_update_bluetooth(&bt);
-        korvo_hmi_update_location(net.config.ip, gw.local.hostname);
+        /* V25-P04 TAG HOST: usar Name/TAG persistido en NVS. */
+        korvo_hmi_update_location(net.config.ip, gw.local.name);
         korvo_hmi_update_gateway_status(gw.local.hostname,
                                         gw.expected_gateway.name,
                                         gw.gateway_ok,
                                         gw.control_ok,
-                                        sip.registered,
-                                        sip_hmi_state(sip.state),
+                                        gw.sip_registered,
+                                        gw.sip_state,
                                         bt.enabled,
                                         bt.paired,
                                         bt.slc_connected,

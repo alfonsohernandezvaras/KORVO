@@ -458,6 +458,10 @@ static void hfp_cb(esp_hf_cb_event_t event, esp_hf_cb_param_t *param)
 
 static esp_err_t start_stack(void)
 {
+    /* KORVO_V25_P01_BT_HARD_OFF: no Classic BT controller / Bluedroid / HFP. */
+    ESP_LOGW(TAG, "P01: Bluetooth local deshabilitado; audio/SIP pertenece a Gateway2");
+    return ESP_ERR_NOT_SUPPORTED;
+
     lock(); bool already = s_stack_started; unlock();
     if (already) return ESP_OK;
 
@@ -558,8 +562,9 @@ esp_err_t korvo_bluetooth_init(void)
 {
     if (!s_lock) s_lock = xSemaphoreCreateMutex();
     if (!s_lock) return ESP_ERR_NO_MEM;
-    ESP_RETURN_ON_ERROR(korvo_audio_bridge_init(), TAG, "audio bridge init");
+    /* KORVO_V25_P01_BT_HARD_OFF: no reservar puente de audio Bluetooth. */
     ESP_RETURN_ON_ERROR(load_cfg(), TAG, "load bt config");
+    s_cfg.enabled = false; /* P01: anular habilitacion guardada, solo en RAM */
     load_output_volume();
     load_mic_gain();
 
