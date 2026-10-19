@@ -18,6 +18,17 @@ const char *korvo_protocol_name(korvo_message_id_t id)
     case KORVO_MSG_AUDIO_START:       return "AUDIO_START";
     case KORVO_MSG_AUDIO_STOP:        return "AUDIO_STOP";
     case KORVO_MSG_AUDIO_STATUS:      return "AUDIO_STATUS";
+    case KORVO_MSG_WIEGAND_D0_RX: return "WIEGAND_D0_RX";
+    case KORVO_MSG_WIEGAND_D1_RX: return "WIEGAND_D1_RX";
+    case KORVO_MSG_WIEGAND_D0_TX: return "WIEGAND_D0_TX";
+    case KORVO_MSG_WIEGAND_D1_TX: return "WIEGAND_D1_TX";
+    case KORVO_MSG_BEACON_STATUS: return "BEACON_STATUS";
+    case KORVO_MSG_READER_CARD: return "READER_CARD";
+    case KORVO_MSG_READER_STATUS: return "READER_STATUS";
+    case KORVO_MSG_WIEGAND_TX: return "WIEGAND_TX";
+    case KORVO_MSG_WIEGAND_TX_STATUS: return "WIEGAND_TX_STATUS";
+    case KORVO_MSG_DOOR_RELAY_STATUS: return "DOOR_RELAY_STATUS";
+    case KORVO_MSG_BEACON_SET: return "BEACON_SET";
     default:                           return "UNKNOWN";
     }
 }
@@ -32,6 +43,10 @@ korvo_message_direction_t korvo_protocol_direction(korvo_message_id_t id)
     case KORVO_MSG_DOOR_OPEN:
     case KORVO_MSG_AUDIO_START:
     case KORVO_MSG_AUDIO_STOP:
+    case KORVO_MSG_WIEGAND_TX:
+    case KORVO_MSG_BEACON_SET:
+    case KORVO_MSG_WIEGAND_D0_TX:
+    case KORVO_MSG_WIEGAND_D1_TX:
         return KORVO_DIR_KORVO_TO_GATEWAY;
 
     default:
@@ -57,6 +72,17 @@ int korvo_protocol_is_valid(uint8_t id)
     case KORVO_MSG_AUDIO_START:
     case KORVO_MSG_AUDIO_STOP:
     case KORVO_MSG_AUDIO_STATUS:
+    case KORVO_MSG_WIEGAND_D0_RX:
+    case KORVO_MSG_WIEGAND_D1_RX:
+    case KORVO_MSG_WIEGAND_D0_TX:
+    case KORVO_MSG_WIEGAND_D1_TX:
+    case KORVO_MSG_BEACON_STATUS:
+    case KORVO_MSG_READER_CARD:
+    case KORVO_MSG_READER_STATUS:
+    case KORVO_MSG_WIEGAND_TX:
+    case KORVO_MSG_WIEGAND_TX_STATUS:
+    case KORVO_MSG_DOOR_RELAY_STATUS:
+    case KORVO_MSG_BEACON_SET:
         return 1;
     default:
         return 0;
