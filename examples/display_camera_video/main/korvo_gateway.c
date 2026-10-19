@@ -242,10 +242,11 @@ static void recompute_locked(void)
      * Gateway IP and that Gateway accepted the WebSocket from this KORVO IP. */
     s_status.gateway_ok = s_status.identity_match && s_status.websocket_connected;
     s_status.pair_auth_ok = s_status.websocket_connected;
+    /* V2.5: control authority is reported by Gateway enrollment.
+     * GPIO map readiness is a separate diagnostic and must not
+     * invalidate an otherwise authorized WebSocket session. */
     s_status.control_ok = s_status.gateway_ok &&
-                          s_gateway_reported_control &&
-                          s_status.remote_map_ok &&
-                          s_status.remote_map_percent == 100;
+                          s_gateway_reported_control;
 
     if (!s_status.paired) {
         s_status.state = KORVO_GW_UNCONFIGURED;
