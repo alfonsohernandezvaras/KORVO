@@ -805,11 +805,9 @@ static void gateway_hmi_task(void *arg)
             snprintf(sip_last_state, sizeof(sip_last_state), "%s", gw.sip_state);
             sip_first = false;
         }
-        /* V25-P05 SIP GATEWAY DIAGNOSTICO: no pintar estados stale. */
-        bool sip_link_ok = gw.websocket_connected &&
-                           gw.dictionary_state == KORVO_DICT_OK;
-        korvo_hmi_update_gateway_sip(sip_link_ok,
-                                     sip_link_ok && gw.sip_registered, gw.sip_state);
+        /* KORVO_P08_HMI_DIRECTO: mismo booleano del WebServer. */
+        korvo_hmi_update_gateway_sip(gw.websocket_connected,
+                                     gw.sip_registered, gw.sip_state);
         korvo_bluetooth_get_status(&bt);
         korvo_network_get_status(&net);
         korvo_hmi_update_bluetooth(&bt);

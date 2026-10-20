@@ -504,7 +504,6 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     static bool last_started = false;
     static bool last_connected = false;
     static bool last_web_ok = false;
-    static bool last_sip_registered = false;
     static uint16_t last_reason = 0xFFFF;
     static uint32_t last_disconnects = UINT32_MAX;
     static char last_ip[16] = "";
@@ -517,15 +516,6 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     const char *tag = gw.local.name[0] ? gw.local.name : "--";
     korvo_network_status_t st = {0};
     if (korvo_network_get_status(&st) != ESP_OK) return;
-    /* KORVO_V25_P02_GATEWAY_SIP_HMI: Gateway2 is the only SIP authority.
-     * Do not paint SIP here: gateway_hmi_task owns that flag. */
-    korvo_gateway_status_t gw_sip = {0};
-    korvo_gateway_get_status(&gw_sip);
-    /* V25-P05 SIP GATEWAY DIAGNOSTICO: misma validacion que boton y web. */
-    bool sip_ok = st.connected && gw_sip.websocket_connected &&
-                  gw_sip.dictionary_state == KORVO_DICT_OK &&
-                  gw_sip.sip_registered;
-
     bool changed =
         st.started != last_started ||
         st.connected != last_connected ||
@@ -534,15 +524,13 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
         strcmp(last_ip, st.config.ip) != 0 ||
         strcmp(last_ssid, st.config.ssid) != 0 ||
         strcmp(last_tag, tag) != 0 ||
-        s_v21_26_web_ok != last_web_ok ||
-        sip_ok != last_sip_registered;
+        s_v21_26_web_ok != last_web_ok; /* KORVO_P09_SIN_SIP_BANDERA */
 
     if (!changed) return;
 
     last_started = st.started;
     last_connected = st.connected;
     last_web_ok = s_v21_26_web_ok;
-    last_sip_registered = sip_ok;
     last_reason = st.last_disconnect_reason;
     last_disconnects = st.disconnect_count;
     strlcpy(last_ip, st.config.ip, sizeof(last_ip));
@@ -552,21 +540,20 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
     char text[192];
     if (st.connected) {
         snprintf(text, sizeof(text),
-                 "IP: %s | HOST: %.63s | SSID: %s | WS: %s | SIP: %s | V.2.1.1",
+                 "IP: %s | HOST: %.63s | SSID: %s | WS: %s | V.2.1.1",
                  st.config.ip[0] ? st.config.ip : "--",
                  tag,
                  st.config.ssid[0] ? st.config.ssid : "--",
-                 s_v21_26_web_ok ? "OK" : "FAIL",
-                 sip_ok ? "OK" : "FAIL");
+                 s_v21_26_web_ok ? "OK" : "FAIL");
     } else if (st.started) {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: %.63s | SSID: %s | WS: FAIL | SIP: FAIL | V.2.1.1 | LINK DOWN R:%u",
+                 "IP: -- | HOST: %.63s | SSID: %s | WS: FAIL | V.2.1.1 | LINK DOWN R:%u",
                  tag,
                  st.config.ssid[0] ? st.config.ssid : "--",
                  (unsigned)st.last_disconnect_reason);
     } else {
         snprintf(text, sizeof(text),
-                 "IP: -- | HOST: %.63s | SSID: -- | WS: FAIL | SIP: FAIL | V.2.1.1", tag);
+                 "IP: -- | HOST: %.63s | SSID: -- | WS: FAIL | V.2.1.1", tag);
     }
 
     bsp_display_lock(0);
@@ -1253,56 +1240,29 @@ void korvo_hmi_update_gateway_sip(bool websocket_connected,
                                   bool registered,
                                   const char *state)
 {
+    (void)websocket_connected;
+    (void)registered;
+    (void)state;
     if (!s_v17_sip) return;
-    /* V25-P05 SIP GATEWAY DIAGNOSTICO: verde solo llamada publicada. */
-    bool in_call = false;
-    if (websocket_connected && registered && state && state[0]) {
-        in_call = strstr(state, "calling") != NULL ||
-                  strstr(state, "ringing") != NULL ||
-                  strstr(state, "incoming") != NULL ||
-                  strstr(state, "active") != NULL ||
-                  strstr(state, "connected") != NULL ||
-                  strstr(state, "established") != NULL ||
-                  strstr(state, "talking") != NULL;
-    }
-    uint32_t color = !websocket_connected ? K26_GRAY :
-                     in_call ? K26_GREEN :
-                     registered ? K26_BLUE : K26_ORANGE;
+    korvo_gateway_status_t gw = {0};
+    korvo_gateway_get_status(&gw);
     bsp_display_lock(0);
-    v17_color(s_v17_sip, color);
+    v17_color(s_v17_sip, gw.sip_registered ? K26_BLUE : K26_GRAY);
     bsp_display_unlock();
 }
 
+/* API antigua conservada, pero ya no pinta el boton SIP. */
 void korvo_hmi_update_sip_button(bool engine_ready,
                                  bool enabled,
                                  bool network_ready,
                                  bool registered,
                                  int sip_state)
 {
-    if (!s_v17_sip) return;
-    uint32_t color = K26_GRAY;
-
-    /* korvo_sip_state_t: CALLING..CONNECTED = 4..8 */
-    bool call_flow = (sip_state >= 4 && sip_state <= 8);
-
-    /* KORVO_V21_28_SIP_ASTERISK_HMI
-     * SIP pertenece a ASTERISK, no al Gateway.
-     * GRIS=no disponible, NARANJO=activo/no registrado,
-     * AZUL=REGISTERED, VERDE=llamada.
-     */
-    if (call_flow) {
-        color = K26_GREEN;
-    } else if (registered) {
-        color = K26_BLUE;
-    } else if (enabled || engine_ready || network_ready) {
-        color = K26_ORANGE;
-    } else {
-        color = K26_GRAY;
-    }
-
-    bsp_display_lock(0);
-    v17_color(s_v17_sip, color);
-    bsp_display_unlock();
+    (void)engine_ready;
+    (void)enabled;
+    (void)network_ready;
+    (void)registered;
+    (void)sip_state;
 }
 
 /* KORVO_V6_3_GATEWAY_FLAG_DICTIONARY */

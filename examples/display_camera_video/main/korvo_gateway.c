@@ -26,7 +26,7 @@
 static const char *TAG = "korvo_gateway";
 static const char *NVS_NS = "korvo_gw";
 
-#define WS_RX_MAX                4096
+#define WS_RX_MAX                8192
 #define WS_HEARTBEAT_MS          15000
 #define WS_DEAD_MS               45000
 #define WS_MANAGER_POLL_MS       500
@@ -49,6 +49,7 @@ static TaskHandle_t s_manager_task;
 static bool s_started;
 static bool s_gateway_reported_control;
 /* KORVO_V25_P06_SIP_GATEWAY_AUTHORITY: solo datos del Gateway2. */
+/* KORVO_P07_SIP_DIRECTO_2eef888e */
 #define GW_SIP_STATUS_TTL_MS 45000
 static bool s_sip_status_valid;
 static uint64_t s_sip_status_rx_ms;
@@ -589,7 +590,6 @@ static void parse_gateway_status(cJSON *data)
     korvo_gateway_identity_t observed = {0};
     bool have_observed = false;
     bool reported_control = false;
-    bool sip_registered = false;
     char sip_state[KORVO_GW_STATE_MAX] = {0};
 
     cJSON *enroll = cJSON_GetObjectItemCaseSensitive(data, "enrollment");
@@ -625,7 +625,6 @@ static void parse_gateway_status(cJSON *data)
 
     cJSON *sip = cJSON_GetObjectItemCaseSensitive(data, "sip");
     if (cJSON_IsObject(sip)) {
-        sip_registered = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(sip, "registered"));
         json_string(sip, "state", sip_state, sizeof(sip_state));
     }
 
@@ -640,6 +639,7 @@ static void parse_gateway_status(cJSON *data)
         cJSON *registered = cJSON_GetObjectItemCaseSensitive(sip, "registered");
         if (cJSON_IsBool(registered)) {
             s_status.sip_registered = cJSON_IsTrue(registered);
+            ESP_LOGI(TAG, "P07 GW SIP publicado: registered=%s", s_status.sip_registered ? "YES" : "NO");
             s_sip_status_valid = true;
             s_sip_status_rx_ms = now_ms();
         }
@@ -653,7 +653,10 @@ static void parse_gateway_status(cJSON *data)
 static void handle_ws_json(const char *text)
 {
     cJSON *root = cJSON_Parse(text);
-    if (!root) return;
+    if (!root) {
+        ESP_LOGW(TAG, "P07 GW WS JSON invalido; bytes=%u", (unsigned)strlen(text));
+        return;
+    }
     char type[24] = {0}, name[64] = {0};
     json_string(root, "type", type, sizeof(type));
     json_string(root, "name", name, sizeof(name));
@@ -688,6 +691,9 @@ static void handle_ws_json(const char *text)
         recompute_locked();
         unlock();
     } else if (!strcmp(type, "status") && !strcmp(name, "sys.status")) {
+        cJSON *sip = cJSON_IsObject(data) ? cJSON_GetObjectItemCaseSensitive(data, "sip") : NULL;
+        cJSON *registered = cJSON_IsObject(sip) ? cJSON_GetObjectItemCaseSensitive(sip, "registered") : NULL;
+        if (!cJSON_IsBool(registered)) ESP_LOGW(TAG, "P07 GW sys.status sin sip.registered booleano");
         parse_gateway_status(data);
     } else if (!strcmp(type, "event") &&
                (!strcmp(name, "sip.registered") ||
@@ -757,15 +763,25 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t event_id, void *e
     } else if (event_id == WEBSOCKET_EVENT_DATA && e && e->data_ptr && e->data_len > 0) {
         if (e->payload_len <= 0 || e->payload_len >= WS_RX_MAX || e->payload_offset < 0 ||
             e->payload_offset + e->data_len >= WS_RX_MAX) {
+            ESP_LOGW(TAG, "P07 GW WS frame descartado: payload=%d offset=%d chunk=%d max=%d",
+                     e->payload_len, e->payload_offset, e->data_len, WS_RX_MAX);
             return;
         }
+        /* KORVO_P11_WS_RX_INTEGRITY: parse only complete payloads.
+         * FIN may mark a WebSocket frame, not completion of all client chunks. */
         if (e->payload_offset == 0) {
-            memset(s_rx, 0, sizeof(s_rx));
             s_rx_expected = (size_t)e->payload_len;
+        }
+        if (s_rx_expected != (size_t)e->payload_len ||
+            (size_t)e->payload_offset + (size_t)e->data_len > s_rx_expected) {
+            ESP_LOGW(TAG, "P11 WS RX inconsistent fragment: off=%d len=%d total=%d",
+                     e->payload_offset, e->data_len, e->payload_len);
+            s_rx_expected = 0;
+            return;
         }
         memcpy(s_rx + e->payload_offset, e->data_ptr, (size_t)e->data_len);
         size_t end = (size_t)e->payload_offset + (size_t)e->data_len;
-        if ((e->fin || end >= s_rx_expected) && end <= s_rx_expected) {
+        if (end == s_rx_expected) {
             s_rx[s_rx_expected] = '\0';
             handle_ws_json(s_rx);
             s_rx_expected = 0;
