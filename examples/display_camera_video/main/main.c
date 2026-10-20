@@ -767,7 +767,10 @@ static void v17_gateway_event_hmi(const korvo_gateway_event_t *ev, void *ctx)
 {
     (void)ctx;
     if(!ev) return;
-    if(!strncmp(ev->name,"reader.",7) || strstr(ev->name,"card")) korvo_hmi_pulse_reader();
+    if (!strncmp(ev->name, "reader.", 7)) {
+        ESP_LOGI(TAG, "P13 LECTOR evento: %s", ev->name);
+        korvo_hmi_pulse_reader();
+    }
     if(!strncmp(ev->name,"door.",5) || !strncmp(ev->name,"rex.",4)) korvo_hmi_pulse_door();
 }
 

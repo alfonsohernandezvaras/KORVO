@@ -1176,10 +1176,7 @@ void korvo_hmi_update_gateway_status(const char *room,const char *gateway_name,b
     uint32_t gw_color = v63_gateway_flag_color(gw.paired,
         gateway_ok || gw.websocket_connected,
         gw.remote_map_ok, control_ok, gateway_ok);
-    /* KORVO_V21_37_1_SIP_STATUS_BUS:
-     * Gateway NO repinta SIP. La unica autoridad visual SIP es
-     * korvo_hmi_update_sip_button(), alimentada por korvo_sip_get_status().
-     */
+    /* P13: SIP visual se actualiza exclusivamente con estado de Gateway2. */
     (void)sip_registered;
     (void)sip_state;
     if(s_v17_gateway) {
@@ -1206,7 +1203,13 @@ void korvo_hmi_update_location(const char *ip,const char *host){
     }
     bsp_display_unlock();
 }
-void korvo_hmi_pulse_reader(void){bsp_display_lock(0);v17_color(s_v17_reader,0x0066CC);s_v17_reader_until=lv_tick_get()+700;bsp_display_unlock();}
+void korvo_hmi_pulse_reader(void){bsp_display_lock(0);v17_color(s_v17_reader,0x0066CC);
+    /* KORVO_P15_READER_SIP_TEST: diagnostico temporal; LECTOR activa SIP azul. */
+    if (s_v17_sip) {
+        lv_obj_clear_flag(s_v17_sip, LV_OBJ_FLAG_HIDDEN);
+        v17_color(s_v17_sip, 0x0066CC);
+    }
+s_v17_reader_until=lv_tick_get()+700;bsp_display_unlock();}
 void korvo_hmi_pulse_door(void){bsp_display_lock(0);v17_color(s_v17_door,0xCC7700);s_v17_door_until=lv_tick_get()+900;bsp_display_unlock();}
 
 korvo_hmi_face_state_t korvo_hmi_face_state(void)
@@ -1236,34 +1239,35 @@ void korvo_hmi_update_sd_button(bool sd_ok, bool fs_ok, bool structure_ok)
 }
 
 /* KORVO_V25_P02_GATEWAY_SIP_HMI: live Gateway2 SIP status; no local SIP reads. */
+/* KORVO_P14B_SIP_DIRECTO: estado SIP recibido desde main.c (Gateway2). */
 void korvo_hmi_update_gateway_sip(bool websocket_connected,
                                   bool registered,
                                   const char *state)
 {
-    (void)websocket_connected;
-    (void)registered;
     (void)state;
-    if (!s_v17_sip) return;
-    korvo_gateway_status_t gw = {0};
-    korvo_gateway_get_status(&gw);
+    const bool sip_ok = websocket_connected && registered;
+    const uint32_t color = sip_ok ? K26_BLUE : K26_GRAY;
+    static int last_color = -1;
+    if (!s_v17_sip) {
+        if (last_color != -2) {
+            ESP_LOGW("KORVO_P14B", "SIP: objeto LVGL no creado");
+            last_color = -2;
+        }
+        return;
+    }
     bsp_display_lock(0);
-    v17_color(s_v17_sip, gw.sip_registered ? K26_BLUE : K26_GRAY);
+    lv_obj_clear_flag(s_v17_sip, LV_OBJ_FLAG_HIDDEN);
+    v17_color(s_v17_sip, color);
     bsp_display_unlock();
+    if (last_color != (int)color) {
+        ESP_LOGI("KORVO_P14B", "SIP HMI: ws=%d registered=%d color=%s",
+                 (int)websocket_connected, (int)registered,
+                 sip_ok ? "AZUL" : "GRIS");
+        last_color = (int)color;
+    }
 }
 
-/* API antigua conservada, pero ya no pinta el boton SIP. */
-void korvo_hmi_update_sip_button(bool engine_ready,
-                                 bool enabled,
-                                 bool network_ready,
-                                 bool registered,
-                                 int sip_state)
-{
-    (void)engine_ready;
-    (void)enabled;
-    (void)network_ready;
-    (void)registered;
-    (void)sip_state;
-}
+
 
 /* KORVO_V6_3_GATEWAY_FLAG_DICTIONARY */
 /* Pure presentation logic. Does not gate pairing, GPIO or door commands. */

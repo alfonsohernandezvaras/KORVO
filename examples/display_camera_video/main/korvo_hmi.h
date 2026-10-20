@@ -81,11 +81,6 @@ void korvo_hmi_update_sd_button(bool sd_ok, bool fs_ok, bool structure_ok);
 void korvo_hmi_update_gateway_sip(bool websocket_connected,
                                   bool registered,
                                   const char *state);
-void korvo_hmi_update_sip_button(bool engine_ready,
-                                 bool enabled,
-                                 bool network_ready,
-                                 bool registered,
-                                 int sip_state);
 void korvo_hmi_update_gateway_button(bool configured,
                                      bool visible,
                                      bool map_ok,
