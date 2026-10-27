@@ -1204,11 +1204,7 @@ void korvo_hmi_update_location(const char *ip,const char *host){
     bsp_display_unlock();
 }
 void korvo_hmi_pulse_reader(void){bsp_display_lock(0);v17_color(s_v17_reader,0x0066CC);
-    /* KORVO_P15_READER_SIP_TEST: diagnostico temporal; LECTOR activa SIP azul. */
-    if (s_v17_sip) {
-        lv_obj_clear_flag(s_v17_sip, LV_OBJ_FLAG_HIDDEN);
-        v17_color(s_v17_sip, 0x0066CC);
-    }
+
 s_v17_reader_until=lv_tick_get()+700;bsp_display_unlock();}
 void korvo_hmi_pulse_door(void){bsp_display_lock(0);v17_color(s_v17_door,0xCC7700);s_v17_door_until=lv_tick_get()+900;bsp_display_unlock();}
 
@@ -1245,8 +1241,15 @@ void korvo_hmi_update_gateway_sip(bool websocket_connected,
                                   const char *state)
 {
     (void)state;
+    /* KORVO_P17_DIAG_SIP: log limitado; no modifica la logica SIP. */
+    static uint32_t p17_hmi_calls = 0;
+    if ((p17_hmi_calls++ % 20U) == 0U) {
+        ESP_LOGW("KORVO_P17", "FUNCION SIP: ws=%d registered=%d objeto=%s",
+                 (int)websocket_connected, (int)registered,
+                 s_v17_sip ? "CREADO" : "NULL");
+    }
     const bool sip_ok = websocket_connected && registered;
-    const uint32_t color = sip_ok ? K26_BLUE : K26_GRAY;
+    const uint32_t color = sip_ok ? 0x0066CC : K26_GRAY;
     static int last_color = -1;
     if (!s_v17_sip) {
         if (last_color != -2) {

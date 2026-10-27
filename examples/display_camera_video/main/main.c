@@ -781,7 +781,13 @@ static void gateway_hmi_task(void *arg)
     static korvo_gateway_status_t gw;
     static korvo_bluetooth_status_t bt;
     static korvo_network_status_t net;
+    /* KORVO_P17_DIAG_SIP: confirmar entrada y ejecucion de tarea HMI. */
+    ESP_LOGW("KORVO_P17", "gateway_hmi_task INICIADA");
+    uint32_t p17_cycles = 0;
     for (;;) {
+        if ((p17_cycles++ % 20U) == 0U) {
+            ESP_LOGW("KORVO_P17", "gateway_hmi_task VIVA ciclo=%lu", (unsigned long)p17_cycles);
+        }
         korvo_bluetooth_supervise();
         korvo_gateway_get_status(&gw);
 
@@ -807,6 +813,11 @@ static void gateway_hmi_task(void *arg)
             sip_last_registered = gw.sip_registered;
             snprintf(sip_last_state, sizeof(sip_last_state), "%s", gw.sip_state);
             sip_first = false;
+        }
+        /* KORVO_P17_DIAG_SIP: estado real antes de entregar a HMI, cada 10 s. */
+        if ((p17_cycles % 20U) == 1U) {
+            ESP_LOGW("KORVO_P17", "ANTES HMI: ws=%d sip=%d state=%s",
+                     (int)gw.websocket_connected, (int)gw.sip_registered, gw.sip_state);
         }
         /* KORVO_P08_HMI_DIRECTO: mismo booleano del WebServer. */
         korvo_hmi_update_gateway_sip(gw.websocket_connected,
@@ -1110,7 +1121,10 @@ void app_main(void)
 
     /* This task now also owns the lightweight Bluetooth HFP link supervisor,
      * therefore it runs even if the Gateway link is temporarily unavailable. */
-    if (xTaskCreate(gateway_hmi_task, "gateway_hmi", 4096, NULL, 3, NULL) != pdPASS) {
+    /* KORVO_P17_DIAG_SIP: resultado de creacion de tarea. */
+    BaseType_t p17_task_created = xTaskCreate(gateway_hmi_task, "gateway_hmi", 4096, NULL, 3, NULL);
+    ESP_LOGW("KORVO_P17", "xTaskCreate gateway_hmi resultado=%ld", (long)p17_task_created);
+    if (p17_task_created != pdPASS) {
         ESP_LOGE(TAG, "Failed to create status/Bluetooth supervisor task");
     }#else
     /* V21.8: no radio/network task is allowed to start. */
