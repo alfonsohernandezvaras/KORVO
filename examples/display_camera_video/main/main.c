@@ -774,6 +774,39 @@ static void v17_gateway_event_hmi(const korvo_gateway_event_t *ev, void *ctx)
     if(!strncmp(ev->name,"door.",5) || !strncmp(ev->name,"rex.",4)) korvo_hmi_pulse_door();
 }
 
+/* KORVO_P18_FLAGS_TASK: actualizacion independiente de GATEWAY y SIP.
+ * Diagnostico: no depende de korvo_bluetooth_supervise().
+ * No modifica SIP/RTP, red, camara ni watchdogs. */
+static void p18_gateway_sip_flags_task(void *arg)
+{
+    (void)arg;
+    static korvo_gateway_status_t flags_gw;
+    ESP_LOGW("KORVO_P18", "FLAGS TASK INICIADA");
+    bool last_ws = false, last_sip = false, first = true;
+    for (;;) {
+        korvo_gateway_get_status(&flags_gw);
+        if (first || last_ws != flags_gw.websocket_connected ||
+            last_sip != flags_gw.sip_registered) {
+            ESP_LOGW("KORVO_P18", "GATEWAY ws=%d paired=%d map=%d control=%d ready=%d | SIP registered=%d state=%s",
+                     (int)flags_gw.websocket_connected, (int)flags_gw.paired,
+                     (int)flags_gw.remote_map_ok, (int)flags_gw.control_ok,
+                     (int)flags_gw.gateway_ok, (int)flags_gw.sip_registered,
+                     flags_gw.sip_state);
+            last_ws = flags_gw.websocket_connected;
+            last_sip = flags_gw.sip_registered;
+            first = false;
+        }
+        korvo_hmi_update_gateway_button(flags_gw.paired,
+                                         flags_gw.websocket_connected,
+                                         flags_gw.remote_map_ok,
+                                         flags_gw.control_ok,
+                                         flags_gw.gateway_ok);
+        korvo_hmi_update_gateway_sip(flags_gw.websocket_connected,
+                                     flags_gw.sip_registered, flags_gw.sip_state);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 static void gateway_hmi_task(void *arg)
 {
     (void)arg;
@@ -1117,6 +1150,14 @@ void app_main(void)
     log_memory_headroom("after web");
     if (web_ret != ESP_OK) {
         ESP_LOGE(TAG, "KORVO web server unavailable: %s", esp_err_to_name(web_ret));
+    }
+
+    /* KORVO_P18_FLAGS_TASK: no depende del supervisor Bluetooth. */
+    BaseType_t p18_flags_result = xTaskCreate(p18_gateway_sip_flags_task,
+                                             "p18_flags", 4096, NULL, 3, NULL);
+    ESP_LOGW("KORVO_P18", "xTaskCreate p18_flags resultado=%ld", (long)p18_flags_result);
+    if (p18_flags_result != pdPASS) {
+        ESP_LOGE("KORVO_P18", "No se pudo crear p18_flags");
     }
 
     /* This task now also owns the lightweight Bluetooth HFP link supervisor,
