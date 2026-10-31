@@ -535,7 +535,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         camera_last_valid_frame_tick = xTaskGetTickCount();
     }
 
-    korvo_video01_capture(camera_buf,camera_buf_hes,camera_buf_ves,camera_buf_len);
+    /* VIDEO-04: no publicar buffer original antes del flip. */
     uint32_t out_w = camera_buf_hes;
     uint32_t out_h = camera_buf_ves;
     uint8_t *out_buf = camera_buf;
@@ -586,6 +586,8 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     }
 
     out_buf = v17_flip_display_buffer;
+    /* VIDEO-04: copiar solo cuadros muestreados del buffer orientado para HMI. */
+    korvo_video01_capture(out_buf,out_w,out_h,(size_t)out_w*out_h*2U);
 
     /*
      * Lightweight motion sampling runs independently from ESP-DL.

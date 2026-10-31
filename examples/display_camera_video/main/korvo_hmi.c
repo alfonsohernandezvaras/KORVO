@@ -1,6 +1,7 @@
 #include "esp_heap_caps.h"
 #include "korvo_hmi.h"
 #include "korvo_gateway.h"
+#include "korvo_video01.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -238,7 +239,7 @@ static void p19_gateway_sip_timer(lv_timer_t *t)
 {
     (void)t;
     static korvo_gateway_status_t gw;
-    static int last_ws = -1, last_sip = -1;
+    static int last_ws = -1, last_sip = -1, last_video = -1;
     korvo_gateway_get_status(&gw);
     const int ws = gw.websocket_connected ? 1 : 0;
     const int sip = (gw.websocket_connected && gw.sip_registered) ? 1 : 0;
@@ -246,10 +247,16 @@ static void p19_gateway_sip_timer(lv_timer_t *t)
         v17_color(s_v17_gateway, ws ? 0x0066CC : 0x202830);
         if (ws != last_ws) lv_label_set_text(s_v17_gateway, ws ? "GW WS: ON" : "GW WS: OFF");
     }
-    if (s_v17_sip) {
-        v17_color(s_v17_sip, sip ? 0x0066CC : 0x202830);
-        if (sip != last_sip) lv_label_set_text(s_v17_sip, sip ? "SIP: YES" : "SIP: NO");
+    /* KORVO_VIDEO03_DIAG: Estado local, NO confirmacion VIDEO PAIR remota. */
+    const int video = (gw.paired && gw.websocket_connected && korvo_video01_ready()) ? 1 : 0;
+    if (s_v17_sip && (sip != last_sip || video != last_video)) {
+        char status[96];
+        snprintf(status, sizeof(status), "%s | %s",
+                 sip ? "#00BB55 SIP: YES#" : "#CC3333 SIP: NO#",
+                 video ? "#00BB55 V: OK#" : "#CC3333 V: DOWN#");
+        lv_label_set_text(s_v17_sip, status);
     }
+    last_video = video;
     if (ws != last_ws || sip != last_sip) {
         ESP_LOGW("KORVO_P19", "LABELS ws=%d registered=%d sip_active=%d", ws, (int)gw.sip_registered, sip);
         last_ws=ws; last_sip=sip;
@@ -674,7 +681,8 @@ void korvo_hmi_init(void)
     lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
 s_v17_gateway=p19_make_status_label(screen,"GW WS: OFF",70);
-    s_v17_sip=p19_make_status_label(screen,"SIP: NO",120);
+    s_v17_sip=p19_make_status_label(screen,"SIP: NO | V: DOWN",120);
+    lv_label_set_recolor(s_v17_sip, true);
     s_v17_reader=v17_make_flag(screen,"LECTOR",170);
     s_v17_door=v17_make_flag(screen,"PUERTA",220);
     s_v17_sd=v17_make_flag(screen,"SD CARD",270);

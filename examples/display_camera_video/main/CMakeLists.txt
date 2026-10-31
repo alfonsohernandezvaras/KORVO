@@ -21,6 +21,7 @@ idf_component_register(
         "."
 
     REQUIRES
+        esp_driver_jpeg
         esp_driver_ppa
         nvs_flash
         esp_wifi
