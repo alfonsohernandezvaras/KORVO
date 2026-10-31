@@ -239,27 +239,31 @@ static void p19_gateway_sip_timer(lv_timer_t *t)
 {
     (void)t;
     static korvo_gateway_status_t gw;
-    static int last_ws = -1, last_sip = -1, last_video = -1;
+    static int last_ws=-1,last_sip=-1,last_video=-1;
     korvo_gateway_get_status(&gw);
-    const int ws = gw.websocket_connected ? 1 : 0;
-    const int sip = (gw.websocket_connected && gw.sip_registered) ? 1 : 0;
-    if (s_v17_gateway) {
-        v17_color(s_v17_gateway, ws ? 0x0066CC : 0x202830);
-        if (ws != last_ws) lv_label_set_text(s_v17_gateway, ws ? "GW WS: ON" : "GW WS: OFF");
+    const int ws=gw.websocket_connected?1:0;
+    const int sip=(gw.websocket_connected && gw.sip_registered)?1:0;
+    /* VIDEO PAIR remoto aun pendiente: disponibilidad local + pairing general. */
+    const int video=(gw.paired && gw.websocket_connected && korvo_video01_ready())?1:0;
+    if(s_v17_gateway){
+        v17_color(s_v17_gateway,ws?0x0066CC:0x202830);
+        lv_obj_set_style_text_color(s_v17_gateway,lv_color_white(),0);
+        lv_label_set_recolor(s_v17_gateway,false);
+        if(ws!=last_ws)lv_label_set_text(s_v17_gateway,ws?"GW WS: ON":"GW WS: OFF");
     }
-    /* KORVO_VIDEO03_DIAG: Estado local, NO confirmacion VIDEO PAIR remota. */
-    const int video = (gw.paired && gw.websocket_connected && korvo_video01_ready()) ? 1 : 0;
-    if (s_v17_sip && (sip != last_sip || video != last_video)) {
-        char status[96];
-        snprintf(status, sizeof(status), "%s | %s",
-                 sip ? "#00BB55 SIP: YES#" : "#CC3333 SIP: NO#",
-                 video ? "#00BB55 V: OK#" : "#CC3333 V: DOWN#");
-        lv_label_set_text(s_v17_sip, status);
+    if(s_v17_sip){
+        v17_color(s_v17_sip,(sip && video)?0x0066CC:0x202830);
+        lv_obj_set_style_text_color(s_v17_sip,lv_color_white(),0);
+        lv_label_set_recolor(s_v17_sip,false);
+        if(sip!=last_sip || video!=last_video){
+            char status[48];
+            snprintf(status,sizeof(status),"SIP: %s | V: %s",sip?"YES":"NO",video?"OK":"DOWN");
+            lv_label_set_text(s_v17_sip,status);
+        }
     }
-    last_video = video;
-    if (ws != last_ws || sip != last_sip) {
-        ESP_LOGW("KORVO_P19", "LABELS ws=%d registered=%d sip_active=%d", ws, (int)gw.sip_registered, sip);
-        last_ws=ws; last_sip=sip;
+    if(ws!=last_ws || sip!=last_sip || video!=last_video){
+        ESP_LOGI("KORVO_VIDEO08","HMI GW=%d SIP=%d VIDEO=%d",ws,sip,video);
+        last_ws=ws;last_sip=sip;last_video=video;
     }
 }
 
