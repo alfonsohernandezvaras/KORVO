@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS
+    SRCS "korvo_video01.c"
         "main.c"
         "app_video.c"
         "face_detect.cpp"

@@ -37,6 +37,7 @@
 #include "korvo_network.h"
 #include "korvo_gateway.h"
 #include "korvo_web.h"
+#include "korvo_video01.h"
 #include "korvo_update.h"
 #include "korvo_intercom.h"
 #include "korvo_sip.h"
@@ -534,6 +535,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         camera_last_valid_frame_tick = xTaskGetTickCount();
     }
 
+    korvo_video01_capture(camera_buf,camera_buf_hes,camera_buf_ves,camera_buf_len);
     uint32_t out_w = camera_buf_hes;
     uint32_t out_h = camera_buf_ves;
     uint8_t *out_buf = camera_buf;
