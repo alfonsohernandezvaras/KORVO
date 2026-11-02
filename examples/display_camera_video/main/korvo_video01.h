@@ -7,6 +7,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+bool korvo_esp_dl_enabled(void);
+void korvo_esp_dl_set_enabled(bool enabled);
 bool korvo_video01_ready(void);
 void korvo_video01_capture(const uint8_t *p, uint32_t w, uint32_t h, size_t len);
 void korvo_video01_register(httpd_handle_t server);

@@ -91,7 +91,15 @@ static lv_color_format_t lvgl_cam_rgb565_fmt;
 static uint8_t *face_ai_buffer = NULL;
 static size_t face_ai_buffer_size = 0;
 static SemaphoreHandle_t face_ai_mutex = NULL;
+/* KORVO_AI_SWITCH_R2: control manual independiente de ESP-DL. */
+static volatile bool esp_dl_enabled = true;
 static volatile bool face_ai_pending = false;
+bool korvo_esp_dl_enabled(void) { return esp_dl_enabled; }
+void korvo_esp_dl_set_enabled(bool enabled) {
+    esp_dl_enabled = enabled;
+    if (!enabled) face_ai_pending = false;
+    ESP_LOGI("ESP_DL_SWITCH", "ESP-DL %s", enabled ? "ON" : "OFF");
+}
 static uint32_t face_frame_counter = 0;
 static uint16_t face_ai_width = 0;
 static uint16_t face_ai_height = 0;
@@ -429,6 +437,11 @@ static void face_detection_task(void *arg)
     ESP_LOGI(TAG, "ESP-DL face detector ready");
 
     while (1) {
+        if (!esp_dl_enabled) {
+            face_ai_pending = false;
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
         if (!face_ai_pending) {
             /*
              * The sleep timeout must run independently from ESP-DL results.
@@ -448,7 +461,7 @@ static void face_detection_task(void *arg)
         face_detection_t result = {0};
 
         if (xSemaphoreTake(face_ai_mutex, portMAX_DELAY) == pdTRUE) {
-            bool ok = face_detect_run(face_ai_buffer,
+            bool ok = esp_dl_enabled && face_detect_run(face_ai_buffer,
                                       face_ai_width,
                                       face_ai_height,
                                       &result);
@@ -564,7 +577,8 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * ESP-DL runs in its own task, never inside this video callback.
      */
     face_frame_counter++;
-    if (face_ai_buffer != NULL &&
+    if (esp_dl_enabled &&
+        face_ai_buffer != NULL &&
         face_ai_mutex != NULL &&
         !face_ai_pending &&
         motion_active &&
