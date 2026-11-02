@@ -19,11 +19,14 @@
 #include <inttypes.h>
 #include "linux/videodev2.h"
 #include "esp_video_init.h"
+#include "esp_video_ioctl.h"
+#include "esp_cam_sensor.h"
 #include "app_video.h"
 #include "korvo_camera_settings.h"
 #include "bsp/esp-bsp.h"
 
 static const char *TAG = "app_video";
+extern const esp_cam_sensor_format_t *korvo_native19_profile(int mode);
 
 #define MAX_BUFFER_COUNT                (6)
 #define MIN_BUFFER_COUNT                (2)
@@ -113,52 +116,36 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
     log_v4l2_fourcc(default_format.fmt.pix.pixelformat, "initial pixel format");
     korvo_v4l2_dump_modes(fd);
 
-    /* KORVO_VIDEO19_CAMERA_MANAGER: seleccionar modo NVS antes de reservar DMA. */
-    {
-        korvo_camera_setting_t cfg=korvo_camera_setting_read();
-        struct v4l2_format requested={0};
-        requested.type=type;
-        requested.fmt.pix.width=cfg.width;
-        requested.fmt.pix.height=cfg.height;
-        requested.fmt.pix.pixelformat=default_format.fmt.pix.pixelformat;
-        requested.fmt.pix.field=V4L2_FIELD_ANY;
-        int sr=ioctl(fd,VIDIOC_S_FMT,&requested);
-        struct v4l2_format actual={0}; actual.type=type;
-        int gr=ioctl(fd,VIDIOC_G_FMT,&actual);
-        ESP_LOGI(TAG,"VIDEO19 REQUEST=%ux%u S_FMT=%d G_FMT=%d ACTUAL=%lux%lu",
-                 cfg.width,cfg.height,sr,gr,(unsigned long)actual.fmt.pix.width,
-                 (unsigned long)actual.fmt.pix.height);
-        if (sr!=0 || gr!=0 || actual.fmt.pix.width!=cfg.width || actual.fmt.pix.height!=cfg.height) {
-            ESP_LOGW(TAG,"VIDEO19 modo no soportado; restaurando VGA 640x480");
-            struct v4l2_format fallback={0}; fallback.type=type;
-            fallback.fmt.pix.width=640; fallback.fmt.pix.height=480;
-            fallback.fmt.pix.pixelformat=default_format.fmt.pix.pixelformat;
-            fallback.fmt.pix.field=V4L2_FIELD_ANY;
-            if (ioctl(fd,VIDIOC_S_FMT,&fallback)!=0) goto exit_0;
-            actual.type=type;
-            if (ioctl(fd,VIDIOC_G_FMT,&actual)!=0 ||
-                actual.fmt.pix.width!=640 || actual.fmt.pix.height!=480) goto exit_0;
-        }
-        /* VIDIOC_S_PARM es opcional: el driver puede rechazarlo o ignorarlo.
-         * No se fuerza un FPS ficticio ni se bloquea la captura por rechazo. */
-#ifdef VIDIOC_S_PARM
-        struct v4l2_streamparm parm={0};
-        parm.type=type;
-        parm.parm.capture.timeperframe.numerator=1;
-        parm.parm.capture.timeperframe.denominator=cfg.fps;
-        int pr=ioctl(fd,VIDIOC_S_PARM,&parm);
-        ESP_LOGI(TAG,"VIDEO19 FPS REQUEST=%u S_PARM=%d",cfg.fps,pr);
-#ifdef VIDIOC_G_PARM
-        struct v4l2_streamparm readparm={0}; readparm.type=type;
-        if (ioctl(fd,VIDIOC_G_PARM,&readparm)==0 &&
-            readparm.parm.capture.timeperframe.numerator!=0) {
-            ESP_LOGI(TAG,"VIDEO19 FPS DRIVER=%lu/%lu seconds/frame",
-                     (unsigned long)readparm.parm.capture.timeperframe.numerator,
-                     (unsigned long)readparm.parm.capture.timeperframe.denominator);
-        }
-#endif
-#endif
+    /* KORVO NATIVE19: keep VIDEO19 NVS settings and program physical OV3660. */
+    korvo_camera_setting_t cfg=korvo_camera_setting_read();
+    const int mode=(cfg.width==240 && cfg.height==240)?1:0;
+    const esp_cam_sensor_format_t *f=korvo_native19_profile(mode);
+    if (!f) {
+        ESP_LOGE(TAG,"VIDEO19 sensor profile unavailable mode=%d",mode);
+        goto exit_0;
     }
+    if (ioctl(fd,VIDIOC_S_SENSOR_FMT,(void*)f)!=0) {
+        ESP_LOGE(TAG,"VIDEO19 sensor programming failed errno=%d",errno);
+        goto exit_0;
+    }
+    struct v4l2_format requested={0};
+    requested.type=type;
+    requested.fmt.pix.width=f->width;
+    requested.fmt.pix.height=f->height;
+    requested.fmt.pix.pixelformat=default_format.fmt.pix.pixelformat;
+    requested.fmt.pix.field=V4L2_FIELD_ANY;
+    if (ioctl(fd,VIDIOC_S_FMT,&requested)!=0) {
+        ESP_LOGE(TAG,"VIDEO19 DVP S_FMT failed errno=%d",errno);
+        goto exit_0;
+    }
+    struct v4l2_format actual={0};actual.type=type;
+    if (ioctl(fd,VIDIOC_G_FMT,&actual)!=0 ||
+        actual.fmt.pix.width!=f->width || actual.fmt.pix.height!=f->height) {
+        ESP_LOGE(TAG,"VIDEO19 DVP dimension mismatch");goto exit_0;
+    }
+    ESP_LOGW(TAG,"VIDEO19 NATIVE sensor=%lux%lu nominal=%lu fps, DVP=%lux%lu",
+        (unsigned long)f->width,(unsigned long)f->height,(unsigned long)f->fps,
+        (unsigned long)actual.fmt.pix.width,(unsigned long)actual.fmt.pix.height);
 
     if (init_fmt != APP_VIDEO_FMT_DRIVER_DEFAULT &&
             default_format.fmt.pix.pixelformat != (uint32_t)init_fmt) {

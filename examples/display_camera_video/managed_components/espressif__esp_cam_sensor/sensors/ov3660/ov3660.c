@@ -153,6 +153,17 @@ static const esp_cam_sensor_format_t ov3660_format_info[] = {
 #endif
 };
 
+
+/* KORVO_NATIVE19_PROFILE */
+const esp_cam_sensor_format_t *korvo_native19_profile(int mode) {
+ for (size_t i=0;i<ARRAY_SIZE(ov3660_format_info);++i) {
+  const esp_cam_sensor_format_t *f=&ov3660_format_info[i];
+  if(f->format!=ESP_CAM_SENSOR_PIXFORMAT_RGB565_BE)continue;
+  if(mode==1 && f->width==240 && f->height==240)return f;
+  if(mode==0 && f->width==640 && f->height==480)return f;
+ }
+ return NULL;
+}
 static uint8_t get_ov3660_actual_format_index(void)
 {
     for (int i = 0; i < ARRAY_SIZE(ov3660_format_index); i++) {

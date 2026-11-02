@@ -608,7 +608,8 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     hmi_last_us = hmi_now_us;
     /* KORVO_VIDEO17_NATIVE400: VGA fallback o 400x300 real. */
     if (!((camera_buf_hes == 400U && camera_buf_ves == 300U) ||
-          (camera_buf_hes == 640U && camera_buf_ves == 480U)) ||
+          (camera_buf_hes == 640U && camera_buf_ves == 480U) ||
+          (camera_buf_hes == 240U && camera_buf_ves == 240U)) ||
         camera_buf_len < (size_t)camera_buf_hes * camera_buf_ves * 2U) {
         static uint32_t bad_dims = 0;
         if ((++bad_dims % 100U) == 1U)

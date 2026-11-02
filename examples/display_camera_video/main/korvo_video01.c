@@ -78,7 +78,7 @@ static void jpeg_worker(void *arg) {
 /* Called with the same flipped RGB565 buffer as LVGL, no changes to HMI. */
 void korvo_video01_capture(const uint8_t *p,uint32_t w,uint32_t h,size_t len){
     callbacks++;input_w=w;input_h=h;input_bytes=len;
-    if(!p||w!=SRC_W||h!=SRC_H||len<SRC_W*SRC_H*2U){rejected++;return;}
+    if(!p||!w||!h||len<(size_t)w*h*2U){rejected++;return;}
     int64_t now=esp_timer_get_time();camera_timestamp=now;
     /* Exactly one startup JPEG self-test, then zero JPEG work when idle. */
     if(startup_done && stream_clients==0 && !snapshot_pending)return;
@@ -91,11 +91,11 @@ void korvo_video01_capture(const uint8_t *p,uint32_t w,uint32_t h,size_t len){
     /* WEB only: nearest-neighbor 640x480 -> 240x180 directly into RGB565
      * destination buffer. No full-VGA copy; HMI buffer remains untouched. */
     for (uint32_t y=0; y<DST_H; ++y) {
-        const uint32_t sy = SRC_H - 1U - ((y * SRC_H) / DST_H);
-        const uint8_t *src = p + (size_t)sy * SRC_W * 2U;
+        const uint32_t sy = h - 1U - ((y * h) / DST_H);
+        const uint8_t *src = p + (size_t)sy * w * 2U;
         uint8_t *dst = raw_frame + (size_t)y * DST_W * 2U;
         for (uint32_t x=0; x<DST_W; ++x) {
-            const uint32_t sx = SRC_W - 1U - ((x * SRC_W) / DST_W);
+            const uint32_t sx = w - 1U - ((x * w) / DST_W);
             dst[2U*x] = src[2U*sx];
             dst[2U*x+1] = src[2U*sx+1];
         }

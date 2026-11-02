@@ -3029,52 +3029,27 @@ static esp_err_t camera19_g(httpd_req_t *r)
     httpd_resp_set_type(r,"text/html; charset=utf-8");
     httpd_resp_sendstr_chunk(r,"<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>");
     httpd_resp_sendstr_chunk(r,STYLE);
-    httpd_resp_sendstr_chunk(r,"</head><body><div class='top'><b>KORVO / VIDEO19</b><a href='/'>Inicio</a></div><div class='wrap'><div class='card'><h2>Camara OV3660 - Banco de pruebas</h2><p class='small'>Los modos no soportados regresan a VGA. FPS solicitado puede ser ignorado por el driver; revisar logs FPS DRIVER y FPS reales.</p><form method='post' action='/camera19'><label>Resolucion solicitada</label><select name='mode'>");
-    const struct {const char *code; const char *label; uint16_t w,h;} modes[]={
-        {"240x240","240 x 240 (modo existente)",240,240},
-        {"320x240","320 x 240 (experimental)",320,240},
-        {"400x300","400 x 300 (experimental)",400,300},
-        {"640x480","640 x 480 (VGA estable)",640,480}};
-    for (unsigned i=0;i<sizeof(modes)/sizeof(modes[0]);i++) {
-        char b[180]; snprintf(b,sizeof(b),"<option value='%s'%s>%s</option>",modes[i].code,
-             (c.width==modes[i].w && c.height==modes[i].h)?" selected":"",modes[i].label);
-        httpd_resp_sendstr_chunk(r,b);
-    }
-    httpd_resp_sendstr_chunk(r,"</select><label>FPS solicitado al controlador</label><select name='fps'>");
-    const unsigned rates[]={5,8,10,12,15,20,24};
-    for (unsigned i=0;i<sizeof(rates)/sizeof(rates[0]);i++) {
-        char b[100]; snprintf(b,sizeof(b),"<option value='%u'%s>%u</option>",rates[i],
-            c.fps==rates[i]?" selected":"",rates[i]);
-        httpd_resp_sendstr_chunk(r,b);
-    }
+    httpd_resp_sendstr_chunk(r,"</head><body><div class='top'><b>KORVO / VIDEO19 NATIVO</b><a href='/'>Inicio</a></div><div class='wrap'><div class='card'><h2>Sensor OV3660 - Resolucion fisica</h2><p>El FPS depende del perfil nativo del sensor.</p><form method='post' action='/camera19'><label>Perfil de sensor</label><select name='mode'>");
+    httpd_resp_sendstr_chunk(r,c.width==240?"<option value='240x240' selected>240x240 RGB565 - 24 FPS nominales</option>":"<option value='240x240'>240x240 RGB565 - 24 FPS nominales</option>");
+    httpd_resp_sendstr_chunk(r,c.width==640?"<option value='640x480' selected>640x480 RGB565 - 10 FPS nominales</option>":"<option value='640x480'>640x480 RGB565 - 10 FPS nominales</option>");
     httpd_resp_sendstr_chunk(r,"</select><button class='btn' type='submit'>GUARDAR Y REINICIAR</button></form></div></div></body></html>");
     return httpd_resp_sendstr_chunk(r,NULL);
 }
 static esp_err_t camera19_p(httpd_req_t *r)
 {
     if (!guard(r)) return ESP_OK;
-    char b[160], mode[32], fps_text[16];
-    if (body(r,b,sizeof(b))!=ESP_OK || !val(b,"mode",mode,sizeof(mode)) ||
-        !val(b,"fps",fps_text,sizeof(fps_text)))
+    char b[160],mode[32];
+    if (body(r,b,sizeof(b))!=ESP_OK || !val(b,"mode",mode,sizeof(mode)))
         return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"Formulario invalido");
     korvo_camera_setting_t c={0};
-    if (strcmp(mode,"240x240")==0) {c.width=240;c.height=240;}
-    else if (strcmp(mode,"320x240")==0) {c.width=320;c.height=240;}
-    else if (strcmp(mode,"400x300")==0) {c.width=400;c.height=300;}
-    else if (strcmp(mode,"640x480")==0) {c.width=640;c.height=480;}
-    else return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"Resolucion invalida");
-    const unsigned rates[]={5,8,10,12,15,20,24};
-    unsigned chosen=(unsigned)atoi(fps_text); bool valid=false;
-    for (unsigned i=0;i<sizeof(rates)/sizeof(rates[0]);i++) if (chosen==rates[i]) valid=true;
-    if (!valid) return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"FPS invalido");
-    c.fps=(uint8_t)chosen;
+    if(strcmp(mode,"240x240")==0){c.width=240;c.height=240;c.fps=24;}
+    else if(strcmp(mode,"640x480")==0){c.width=640;c.height=480;c.fps=10;}
+    else return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"Perfil no soportado");
     esp_err_t e=korvo_camera_setting_write(c);
-    if (e!=ESP_OK) return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"NVS fallo");
+    if(e!=ESP_OK)return httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"NVS fallo");
     httpd_resp_set_type(r,"text/html");
-    httpd_resp_sendstr(r,"<html><body><h2>VIDEO19 guardado. Reiniciando KORVO...</h2></body></html>");
-    vTaskDelay(pdMS_TO_TICKS(700));
-    esp_restart();
-    return ESP_OK;
+    httpd_resp_sendstr(r,"<html><body><h2>VIDEO19 perfil nativo guardado. Reiniciando...</h2></body></html>");
+    vTaskDelay(pdMS_TO_TICKS(700));esp_restart();return ESP_OK;
 }
 
 static esp_err_t reboot_p(httpd_req_t *r)
