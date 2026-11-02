@@ -14,12 +14,12 @@
 #include "freertos/semphr.h"
 #define SRC_W 640U
 #define SRC_H 480U
-#define DST_W 240U
-#define DST_H 180U
+#define DST_W 640U
+#define DST_H 480U
 #define RAW_BYTES (DST_W*DST_H*2U)
 #define RGB_BYTES (DST_W*DST_H*3U)
-#define JPEG_CAP (128U*1024U)
-#define INTERVAL_US 200000LL
+#define JPEG_CAP (256U*1024U)
+#define INTERVAL_US 100000LL
 static const char *TAG="KORVO_VIDEO08";
 static uint8_t *raw_frame,*jpeg_frame,*rgb888_frame;
 static SemaphoreHandle_t raw_mutex,jpg_mutex;
@@ -30,6 +30,7 @@ static volatile uint32_t input_w,input_h,stream_clients;
 static volatile size_t input_bytes,jpeg_len;
 static volatile int64_t camera_timestamp,jpeg_timestamp;
 static volatile bool pending,startup_done,startup_ok,snapshot_pending;
+static volatile int v_stream_bgr=1; /* WEB only, 1=BGR test, 0=original RGB */
 static volatile int v07_byte_swap=1; /* working VIDEO07 default */
 static int64_t last_sample;
 
@@ -56,9 +57,10 @@ static void jpeg_worker(void *arg) {
         for(size_t i=0,j=0;i<RAW_BYTES;i+=2,j+=3){
             uint16_t px=swap?(((uint16_t)raw_frame[i]<<8)|raw_frame[i+1]):(((uint16_t)raw_frame[i+1]<<8)|raw_frame[i]);
             uint8_t red=(px>>11)&31,green=(px>>5)&63,blue=px&31;
-            rgb888_frame[j]=(red<<3)|(red>>2);
+            /* STREAM 2 only: test RGB/BGR channel order, default BGR. */
+            rgb888_frame[j]=v_stream_bgr ? ((blue<<3)|(blue>>2)) : ((red<<3)|(red>>2));
             rgb888_frame[j+1]=(green<<2)|(green>>4);
-            rgb888_frame[j+2]=(blue<<3)|(blue>>2);
+            rgb888_frame[j+2]=v_stream_bgr ? ((red<<3)|(red>>2)) : ((blue<<3)|(blue>>2));
         }
         xSemaphoreGive(raw_mutex);
         if(xSemaphoreTake(jpg_mutex,pdMS_TO_TICKS(100))==pdTRUE){
@@ -86,14 +88,8 @@ void korvo_video01_capture(const uint8_t *p,uint32_t w,uint32_t h,size_t len){
         if(xTaskCreate(jpeg_worker,"korvo_jpeg",8192,NULL,4,&encoder_task)!=pdPASS){ESP_LOGE(TAG,"JPEG worker task failed");return;}
     }
     if(xSemaphoreTake(raw_mutex,0)!=pdTRUE)return;
-    /* Downsample ONLY web copy: 640x480 -> 320x240, preserve RGB565 bytes and 180-degree orientation. */
-    for(uint32_t y=0;y<DST_H;y++){
-        const uint8_t *src=p+(size_t)(y*2U)*SRC_W*2U;
-        uint8_t *dst=raw_frame+(size_t)y*DST_W*2U;
-        for(uint32_t x=0;x<DST_W;x++){
-            dst[x*2U]=src[x*4U];dst[x*2U+1U]=src[x*4U+1U];
-        }
-    }
+    /* WEB copy only: full VGA, without resampling or touching LVGL buffer. */
+    memcpy(raw_frame,p,RAW_BYTES);
     pending=true;last_sample=now;
     snapshot_pending=false;
     xSemaphoreGive(raw_mutex);
@@ -106,7 +102,7 @@ static esp_err_t video_status(httpd_req_t *r){
     char b[560];
     int64_t age=jpeg_timestamp?(esp_timer_get_time()-jpeg_timestamp)/1000:-1;
     int64_t cam_age=camera_timestamp?(esp_timer_get_time()-camera_timestamp)/1000:-1;
-    snprintf(b,sizeof(b),"{\"ok\":%s,\"camera\":\"%s\",\"startup_jpeg_test\":\"%s\",\"stream_state\":\"%s\",\"clients\":%lu,\"jpeg_active\":%s,\"format\":\"JPEG\",\"width\":240,\"height\":180,\"fps_target\":5,\"frames\":%lu,\"age_ms\":%lld,\"camera_age_ms\":%lld,\"jpeg_bytes\":%u,\"input_w\":%lu,\"input_h\":%lu,\"input_bytes\":%u,\"callbacks\":%lu,\"rejected\":%lu,\"encode_errors\":%lu,\"stream_port\":8081}",
+    snprintf(b,sizeof(b),"{\"ok\":%s,\"camera\":\"%s\",\"startup_jpeg_test\":\"%s\",\"stream_state\":\"%s\",\"clients\":%lu,\"jpeg_active\":%s,\"format\":\"JPEG\",\"width\":640,\"height\":480,\"fps_target\":10,\"frames\":%lu,\"age_ms\":%lld,\"camera_age_ms\":%lld,\"jpeg_bytes\":%u,\"input_w\":%lu,\"input_h\":%lu,\"input_bytes\":%u,\"callbacks\":%lu,\"rejected\":%lu,\"encode_errors\":%lu,\"stream_port\":8081}",
       korvo_video01_ready()?"true":"false",cam_age>=0&&cam_age<3000?"OK":"DOWN",
       !startup_done?"PENDING":(startup_ok?"OK":"ERROR"),stream_clients?"STREAMING":"READY",
       (unsigned long)stream_clients,stream_clients||snapshot_pending?"true":"false",
@@ -119,9 +115,9 @@ static esp_err_t video_view(httpd_req_t *r){
     static const char page[]=
       "<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
       "<title>KORVO VIDEO-08</title><style>body{background:#101820;color:#eee;font:16px Arial;text-align:center}"
-      "img{display:block;width:240px;max-width:95vw;height:auto;margin:14px auto;border:2px solid #268ad1}"
+      "img{display:block;width:640px;max-width:95vw;height:auto;margin:14px auto;border:2px solid #268ad1}"
       "pre{display:inline-block;text-align:left;color:#8ce0ad;font-size:13px}#msg{color:#ffd28b}</style></head>"
-      "<body><h2>KORVO - VIDEO IP</h2><p>Streaming 240x180 / JPEG / objetivo 5 FPS / ON-DEMAND</p>"
+      "<body><h2>KORVO - VIDEO IP</h2><p>Streaming 640x480 / JPEG / objetivo 10 FPS / ON-DEMAND</p>"
       "<p id='msg'>Conectando MJPEG...</p><img id='v' alt='VIDEO DOWN'>"
       "<p><button onclick='snapshot()'>Ver fotografia</button> <button onclick='stream()'>Ver streaming</button>"
       " <button onclick='stop()'>STOP streaming</button></p><pre id='s'>Conectando...</pre>"
@@ -143,7 +139,11 @@ static esp_err_t video_color(httpd_req_t *r){
         if(val[0]=='0'&&!val[1])v07_byte_swap=0;
         else if(val[0]=='1'&&!val[1])v07_byte_swap=1;
     }
-    char resp[96];snprintf(resp,sizeof(resp),"{\"swap\":%d,\"description\":\"RGB565 byte order for WEB ONLY\"}",v07_byte_swap);
+    if(httpd_req_get_url_query_str(r,q,sizeof(q))==ESP_OK&&httpd_query_key_value(q,"channels",val,sizeof(val))==ESP_OK){
+        if(val[0]=='0'&&!val[1])v_stream_bgr=0;
+        else if(val[0]=='1'&&!val[1])v_stream_bgr=1;
+    }
+    char resp[128];snprintf(resp,sizeof(resp),"{\"swap\":%d,\"channels_bgr\":%d,\"description\":\"STREAM2 color test only\"}",v07_byte_swap,v_stream_bgr);
     httpd_resp_set_type(r,"application/json");return httpd_resp_sendstr(r,resp);
 }
 static esp_err_t video_snapshot(httpd_req_t *r){
@@ -193,6 +193,6 @@ void korvo_video01_register(httpd_handle_t server){
         httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
         httpd_uri_t sn={.uri="/video/snapshot.jpg",.method=HTTP_GET,.handler=video_snapshot};
         httpd_register_uri_handler(stream_server,&ss);httpd_register_uri_handler(stream_server,&sn);
-        ESP_LOGI(TAG,"MJPEG ON-DEMAND 240x180 server port 8081");
+        ESP_LOGI(TAG,"MJPEG ON-DEMAND 640x480 server port 8081");
     }else ESP_LOGE(TAG,"MJPEG server failed on port 8081");
 }
