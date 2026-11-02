@@ -118,16 +118,21 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
 
     /* KORVO NATIVE19: keep VIDEO19 NVS settings and program physical OV3660. */
     korvo_camera_setting_t cfg=korvo_camera_setting_read();
+    /* KORVO_NATIVE19_D7815C9F: trazabilidad del perfil solicitado en NVS. */
+    ESP_LOGW(TAG,"VIDEO19 NVS request=%ux%u fps=%u",(unsigned)cfg.width,
+             (unsigned)cfg.height,(unsigned)cfg.fps);
     const int mode=(cfg.width==240 && cfg.height==240)?1:0;
     const esp_cam_sensor_format_t *f=korvo_native19_profile(mode);
     if (!f) {
         ESP_LOGE(TAG,"VIDEO19 sensor profile unavailable mode=%d",mode);
         goto exit_0;
     }
+    ESP_LOGW(TAG,"VIDEO19 native ioctl begin profile=%s",f->name);
     if (ioctl(fd,VIDIOC_S_SENSOR_FMT,(void*)f)!=0) {
         ESP_LOGE(TAG,"VIDEO19 sensor programming failed errno=%d",errno);
         goto exit_0;
     }
+    ESP_LOGW(TAG,"VIDEO19 native sensor ioctl OK");
     struct v4l2_format requested={0};
     requested.type=type;
     requested.fmt.pix.width=f->width;
@@ -151,8 +156,8 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
             default_format.fmt.pix.pixelformat != (uint32_t)init_fmt) {
         struct v4l2_format format = {
             .type = type,
-            .fmt.pix.width = default_format.fmt.pix.width,
-            .fmt.pix.height = default_format.fmt.pix.height,
+            .fmt.pix.width = actual.fmt.pix.width,
+            .fmt.pix.height = actual.fmt.pix.height,
             .fmt.pix.pixelformat = init_fmt,
         };
 
