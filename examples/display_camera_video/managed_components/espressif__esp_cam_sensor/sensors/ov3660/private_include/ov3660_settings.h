@@ -368,6 +368,13 @@ static const ov3660_reginfo_t ov3660_sensor_default_regs[] = {
     {0x3824, 0x02}, \
     {0x460c, 0x22}, \
 
+#define ov3660_settings_320X240_10fps \
+    ov3660_settings_640X480_10fps \
+    {0x3808, 0x01}, \
+    {0x3809, 0x40}, \
+    {0x380a, 0x00}, \
+    {0x380b, 0xf0}, \
+
 #define ov3660_settings_1280X720 \
     {0x3800, 0x00}, \
     {0x3801, 0x40}, \

@@ -116,15 +116,11 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
     log_v4l2_fourcc(default_format.fmt.pix.pixelformat, "initial pixel format");
     korvo_v4l2_dump_modes(fd);
 
-    /* KORVO NATIVE19: keep VIDEO19 NVS settings and program physical OV3660. */
-    korvo_camera_setting_t cfg=korvo_camera_setting_read();
-    /* KORVO_NATIVE19_D7815C9F: trazabilidad del perfil solicitado en NVS. */
-    ESP_LOGW(TAG,"VIDEO19 NVS request=%ux%u fps=%u",(unsigned)cfg.width,
-             (unsigned)cfg.height,(unsigned)cfg.fps);
-    const int mode=(cfg.width==240 && cfg.height==240)?1:0;
-    const esp_cam_sensor_format_t *f=korvo_native19_profile(mode);
+    /* QVGA320: perfil fijo, sin NVS */
+    const esp_cam_sensor_format_t *f=korvo_native19_profile(0);
+    ESP_LOGW(TAG,"KORVO QVGA320 FIXED: sensor 320x240 RGB565");
     if (!f) {
-        ESP_LOGE(TAG,"VIDEO19 sensor profile unavailable mode=%d",mode);
+        ESP_LOGE(TAG,"KORVO QVGA320: sensor profile unavailable");
         goto exit_0;
     }
     ESP_LOGW(TAG,"VIDEO19 native ioctl begin profile=%s",f->name);

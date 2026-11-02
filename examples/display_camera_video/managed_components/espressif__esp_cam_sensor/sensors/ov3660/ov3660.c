@@ -105,12 +105,12 @@ static const esp_cam_sensor_format_t ov3660_format_info[] = {
 #endif
 #if CONFIG_CAMERA_OV3660_DVP_RGB565_BE_640X480_10FPS
     {
-        .name = "DVP_8bit_20Minput_RGB565_BE_640x480_10fps",
+        .name = "DVP_8bit_20Minput_RGB565_BE_320x240_10fps",
         .format = ESP_CAM_SENSOR_PIXFORMAT_RGB565_BE,
         .port = ESP_CAM_SENSOR_DVP,
         .xclk = 20000000,
-        .width = 640,
-        .height = 480,
+        .width = 320,
+        .height = 240,
         .regs = ov3660_dvp_8bit_20Minput_640x480_rgb565_be_10fps,
         .regs_size = ARRAY_SIZE(ov3660_dvp_8bit_20Minput_640x480_rgb565_be_10fps),
         .fps = 10,
@@ -160,7 +160,7 @@ const esp_cam_sensor_format_t *korvo_native19_profile(int mode) {
   const esp_cam_sensor_format_t *f=&ov3660_format_info[i];
   if(f->format!=ESP_CAM_SENSOR_PIXFORMAT_RGB565_BE)continue;
   if(mode==1 && f->width==240 && f->height==240)return f;
-  if(mode==0 && f->width==640 && f->height==480)return f;
+  if(mode==0 && f->width==320 && f->height==240)return f;
  }
  return NULL;
 }
