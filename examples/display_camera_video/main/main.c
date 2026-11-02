@@ -598,23 +598,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      *
      * No X/Y/resolution/viewport changes.
      */
-    if (camera_buf != NULL &&
-        camera_buf_hes == 320 &&
-        camera_buf_ves == 240 &&
-        camera_buf_len >= (size_t)320 * 240 * 2) {
-
-        const size_t row_bytes = (size_t)320 * 2;
-        uint8_t *top = camera_buf;
-        uint8_t *bottom = camera_buf + ((size_t)240 - 1) * row_bytes;
-
-        for (uint32_t row = 0; row < 120; row++) {
-            memcpy(v17_flip_row_tmp, top, row_bytes);
-            memcpy(top, bottom, row_bytes);
-            memcpy(bottom, v17_flip_row_tmp, row_bytes);
-            top += row_bytes;
-            bottom -= row_bytes;
-        }
-    }
+    /* VIDEO17: nunca modificar el buffer del sensor en sitio. */
 
     /* KORVO_VIDEO13_HMI_QVGA20: HMI only, maximum 20 FPS.
      * Keep the camera/IA/motion and the MJPEG path independent. */
@@ -622,28 +606,37 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     int64_t hmi_now_us = esp_timer_get_time();
     if ((hmi_now_us - hmi_last_us) < 50000LL) return;
     hmi_last_us = hmi_now_us;
-    if (camera_buf_hes != 640U || camera_buf_ves != 480U ||
-        camera_buf_len < 640U*480U*2U) return;
-    const size_t hmi_need = 400U*300U*2U; /* VIDEO16: buffer RGB565 final */
+    /* KORVO_VIDEO17_NATIVE400: VGA fallback o 400x300 real. */
+    if (!((camera_buf_hes == 400U && camera_buf_ves == 300U) ||
+          (camera_buf_hes == 640U && camera_buf_ves == 480U)) ||
+        camera_buf_len < (size_t)camera_buf_hes * camera_buf_ves * 2U) {
+        static uint32_t bad_dims = 0;
+        if ((++bad_dims % 100U) == 1U)
+            ESP_LOGE(TAG, "VIDEO17 invalid capture %lux%lu len=%u",
+                     (unsigned long)camera_buf_hes,
+                     (unsigned long)camera_buf_ves, (unsigned)camera_buf_len);
+        return;
+    }
+    const size_t hmi_need = 400U * 300U * 2U;
     if (v17_flip_display_buffer == NULL || v17_flip_display_buffer_size < hmi_need) {
         if (v17_flip_display_buffer != NULL) heap_caps_free(v17_flip_display_buffer);
         v17_flip_display_buffer = heap_caps_malloc(hmi_need, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (v17_flip_display_buffer == NULL) {
             v17_flip_display_buffer_size = 0;
-            ESP_LOGE(TAG, "VIDEO13 HMI QVGA buffer allocation failed");
+            ESP_LOGE(TAG, "VIDEO17 HMI allocation failed");
             return;
         }
         v17_flip_display_buffer_size = hmi_need;
     }
-    /* KORVO_VIDEO16_DIRECT_400X300: VGA 640x480 -> HMI 400x300.
-     * Muestreo directo nearest-neighbor y giro 180, una sola pasada.
-     * Sin zoom LVGL, sin tocar sensor, IA ni streaming. */
+    /* Giro 180 grados + muestreo directo: 400x300 -> 400x300 sin zoom,
+       o VGA -> 400x300 en modo de respaldo. */
     for (uint32_t y = 0; y < 300U; ++y) {
-        const uint32_t sy = 479U - ((y * 480U) / 300U);
-        const uint8_t *src = camera_buf + (size_t)sy * 640U * 2U;
+        const uint32_t sy = camera_buf_ves - 1U - ((y * camera_buf_ves) / 300U);
+        const uint8_t *src = camera_buf + (size_t)sy * camera_buf_hes * 2U;
         uint8_t *dst = v17_flip_display_buffer + (size_t)y * 400U * 2U;
         for (uint32_t x = 0; x < 400U; ++x) {
-            const size_t sx = (size_t)(639U - ((x * 640U) / 400U)) * 2U;
+            const size_t sx = (size_t)(camera_buf_hes - 1U -
+                               ((x * camera_buf_hes) / 400U)) * 2U;
             dst[2U*x] = src[sx];
             dst[2U*x+1U] = src[sx+1U];
         }
@@ -970,7 +963,7 @@ void app_main(void)
     }
 
     /* Dedicated full VGA RGB565 buffer for ESP-DL */
-    face_ai_buffer_size = 320U * 240U * 2U; /* V17 */
+    face_ai_buffer_size = 640U * 480U * 2U; /* VIDEO17: IA 400x300 o respaldo VGA */
     face_ai_buffer = heap_caps_malloc(face_ai_buffer_size, MALLOC_CAP_SPIRAM);
     if (face_ai_buffer == NULL) {
         ESP_LOGE(TAG, "Failed to allocate face AI buffer (%u bytes)",
@@ -1004,26 +997,45 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
         esp_restart();
     }
-    /* KORVO_V17_QVGA */
+    /* KORVO_VIDEO17_NATIVE400: solicitar 400x300; conservar VGA como respaldo.
+     * No se modifican registros del sensor, VSYNC ni DMA. */
     struct v4l2_format v17_fmt = {0};
-    v17_fmt.type=V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v17_fmt.fmt.pix.width=320; v17_fmt.fmt.pix.height=240;
-    v17_fmt.fmt.pix.pixelformat=app_video_get_pixelformat();
-    v17_fmt.fmt.pix.field=V4L2_FIELD_ANY;
-    if(ioctl(fd,VIDIOC_S_FMT,&v17_fmt)<0)
-        ESP_LOGW(TAG,"V17 QVGA request failed; driver kept current mode");
-    else
-        ESP_LOGI(TAG,"V17 camera mode %lux%lu",(unsigned long)v17_fmt.fmt.pix.width,(unsigned long)v17_fmt.fmt.pix.height);
-    /* KORVO_V17_2_G_FMT */
+    v17_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    v17_fmt.fmt.pix.width = 400;
+    v17_fmt.fmt.pix.height = 300;
+    v17_fmt.fmt.pix.pixelformat = app_video_get_pixelformat();
+    v17_fmt.fmt.pix.field = V4L2_FIELD_ANY;
+    int v17_set_ok = ioctl(fd, VIDIOC_S_FMT, &v17_fmt);
+    ESP_LOGI(TAG, "VIDEO17 S_FMT 400x300 result=%d returned=%lux%lu",
+             v17_set_ok, (unsigned long)v17_fmt.fmt.pix.width,
+             (unsigned long)v17_fmt.fmt.pix.height);
     struct v4l2_format v17_actual = {0};
     v17_actual.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_G_FMT, &v17_actual) == 0) {
-        ESP_LOGI(TAG, "V17.2 V4L2 ACTUAL=%lux%lu fourcc=0x%08lx",
+        if (!((v17_actual.fmt.pix.width == 400 && v17_actual.fmt.pix.height == 300) ||
+              (v17_actual.fmt.pix.width == 640 && v17_actual.fmt.pix.height == 480))) {
+            ESP_LOGW(TAG, "VIDEO17 unsupported actual %lux%lu: requesting VGA fallback",
+                     (unsigned long)v17_actual.fmt.pix.width,
+                     (unsigned long)v17_actual.fmt.pix.height);
+            struct v4l2_format fallback = {0};
+            fallback.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            fallback.fmt.pix.width = 640;
+            fallback.fmt.pix.height = 480;
+            fallback.fmt.pix.pixelformat = app_video_get_pixelformat();
+            fallback.fmt.pix.field = V4L2_FIELD_ANY;
+            if (ioctl(fd, VIDIOC_S_FMT, &fallback) < 0)
+                ESP_LOGE(TAG, "VIDEO17 VGA fallback S_FMT failed");
+            (void)ioctl(fd, VIDIOC_G_FMT, &v17_actual);
+        }
+        ESP_LOGI(TAG, "VIDEO17 ACTUAL=%lux%lu fourcc=0x%08lx sizeimage=%lu",
                  (unsigned long)v17_actual.fmt.pix.width,
                  (unsigned long)v17_actual.fmt.pix.height,
-                 (unsigned long)v17_actual.fmt.pix.pixelformat);
+                 (unsigned long)v17_actual.fmt.pix.pixelformat,
+                 (unsigned long)v17_actual.fmt.pix.sizeimage);
         korvo_hmi_update_video_resolution((uint16_t)v17_actual.fmt.pix.width,
                                           (uint16_t)v17_actual.fmt.pix.height);
+    } else {
+        ESP_LOGE(TAG, "VIDEO17 VIDIOC_G_FMT failed: verify capture in logs");
     }
     lvgl_cam_rgb565_fmt = lvgl_rgb565_fmt_from_v4l2(app_video_get_pixelformat());
 
