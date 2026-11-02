@@ -997,45 +997,16 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
         esp_restart();
     }
-    /* KORVO_VIDEO17_NATIVE400: solicitar 400x300; conservar VGA como respaldo.
-     * No se modifican registros del sensor, VSYNC ni DMA. */
-    struct v4l2_format v17_fmt = {0};
-    v17_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v17_fmt.fmt.pix.width = 400;
-    v17_fmt.fmt.pix.height = 300;
-    v17_fmt.fmt.pix.pixelformat = app_video_get_pixelformat();
-    v17_fmt.fmt.pix.field = V4L2_FIELD_ANY;
-    int v17_set_ok = ioctl(fd, VIDIOC_S_FMT, &v17_fmt);
-    ESP_LOGI(TAG, "VIDEO17 S_FMT 400x300 result=%d returned=%lux%lu",
-             v17_set_ok, (unsigned long)v17_fmt.fmt.pix.width,
-             (unsigned long)v17_fmt.fmt.pix.height);
-    struct v4l2_format v17_actual = {0};
-    v17_actual.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_G_FMT, &v17_actual) == 0) {
-        if (!((v17_actual.fmt.pix.width == 400 && v17_actual.fmt.pix.height == 300) ||
-              (v17_actual.fmt.pix.width == 640 && v17_actual.fmt.pix.height == 480))) {
-            ESP_LOGW(TAG, "VIDEO17 unsupported actual %lux%lu: requesting VGA fallback",
-                     (unsigned long)v17_actual.fmt.pix.width,
-                     (unsigned long)v17_actual.fmt.pix.height);
-            struct v4l2_format fallback = {0};
-            fallback.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            fallback.fmt.pix.width = 640;
-            fallback.fmt.pix.height = 480;
-            fallback.fmt.pix.pixelformat = app_video_get_pixelformat();
-            fallback.fmt.pix.field = V4L2_FIELD_ANY;
-            if (ioctl(fd, VIDIOC_S_FMT, &fallback) < 0)
-                ESP_LOGE(TAG, "VIDEO17 VGA fallback S_FMT failed");
-            (void)ioctl(fd, VIDIOC_G_FMT, &v17_actual);
-        }
-        ESP_LOGI(TAG, "VIDEO17 ACTUAL=%lux%lu fourcc=0x%08lx sizeimage=%lu",
-                 (unsigned long)v17_actual.fmt.pix.width,
-                 (unsigned long)v17_actual.fmt.pix.height,
-                 (unsigned long)v17_actual.fmt.pix.pixelformat,
-                 (unsigned long)v17_actual.fmt.pix.sizeimage);
-        korvo_hmi_update_video_resolution((uint16_t)v17_actual.fmt.pix.width,
-                                          (uint16_t)v17_actual.fmt.pix.height);
-    } else {
-        ESP_LOGE(TAG, "VIDEO17 VIDIOC_G_FMT failed: verify capture in logs");
+    /* VIDEO18: app_video_open() es el unico propietario de la negociacion V4L2. */
+    struct v4l2_format video18_actual = {0};
+    video18_actual.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (ioctl(fd, VIDIOC_G_FMT, &video18_actual) == 0) {
+        ESP_LOGI(TAG, "VIDEO18 MAIN ACTUAL=%lux%lu sizeimage=%lu",
+                 (unsigned long)video18_actual.fmt.pix.width,
+                 (unsigned long)video18_actual.fmt.pix.height,
+                 (unsigned long)video18_actual.fmt.pix.sizeimage);
+        korvo_hmi_update_video_resolution((uint16_t)video18_actual.fmt.pix.width,
+                                          (uint16_t)video18_actual.fmt.pix.height);
     }
     lvgl_cam_rgb565_fmt = lvgl_rgb565_fmt_from_v4l2(app_video_get_pixelformat());
 

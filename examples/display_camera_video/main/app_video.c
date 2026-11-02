@@ -112,18 +112,42 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
     log_v4l2_fourcc(default_format.fmt.pix.pixelformat, "initial pixel format");
     korvo_v4l2_dump_modes(fd);
 
-    /* V05: request native VGA capture, preserving pixel format. */
+    /* VIDEO18: negociacion unica en app_video_open; respaldo VGA comprobado. */
     {
-        struct v4l2_format vga = {0};
-        vga.type = type;
-        vga.fmt.pix.width = 640;
-        vga.fmt.pix.height = 480;
-        vga.fmt.pix.pixelformat = default_format.fmt.pix.pixelformat;
-        if (ioctl(fd, VIDIOC_S_FMT, &vga) != 0) {
-            ESP_LOGE(TAG, "V08 failed to request VGA 640x480");
-            goto exit_0;
+        struct v4l2_format requested = {0};
+        requested.type = type;
+        requested.fmt.pix.width = 400;
+        requested.fmt.pix.height = 300;
+        requested.fmt.pix.pixelformat = default_format.fmt.pix.pixelformat;
+        requested.fmt.pix.field = V4L2_FIELD_ANY;
+        int set_result = ioctl(fd, VIDIOC_S_FMT, &requested);
+        struct v4l2_format actual = {0};
+        actual.type = type;
+        int get_result = ioctl(fd, VIDIOC_G_FMT, &actual);
+        ESP_LOGI(TAG, "VIDEO18 REQUEST=400x300 set=%d get=%d actual=%lux%lu",
+                 set_result, get_result,
+                 (unsigned long)actual.fmt.pix.width,
+                 (unsigned long)actual.fmt.pix.height);
+        if (set_result != 0 || get_result != 0 ||
+            (actual.fmt.pix.width != 400 || actual.fmt.pix.height != 300)) {
+            struct v4l2_format vga = {0};
+            vga.type = type;
+            vga.fmt.pix.width = 640;
+            vga.fmt.pix.height = 480;
+            vga.fmt.pix.pixelformat = default_format.fmt.pix.pixelformat;
+            vga.fmt.pix.field = V4L2_FIELD_ANY;
+            ESP_LOGW(TAG, "VIDEO18 FALLBACK=640x480");
+            if (ioctl(fd, VIDIOC_S_FMT, &vga) != 0) {
+                ESP_LOGE(TAG, "VIDEO18 VGA fallback failed");
+                goto exit_0;
+            }
+            actual.type = type;
+            if (ioctl(fd, VIDIOC_G_FMT, &actual) != 0 ||
+                actual.fmt.pix.width != 640 || actual.fmt.pix.height != 480) {
+                ESP_LOGE(TAG, "VIDEO18 VGA fallback verification failed");
+                goto exit_0;
+            }
         }
-        ESP_LOGI(TAG, "V09 VGA baseline: 640x480");
     }
 
     if (init_fmt != APP_VIDEO_FMT_DRIVER_DEFAULT &&
