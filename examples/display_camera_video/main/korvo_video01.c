@@ -1,4 +1,4 @@
-/* KORVO_VIDEO09_240x180: KORVO_VIDEO08_ONDEMAND: VGA camera/HMI untouched, QVGA HTTP on demand.
+/* KORVO_VIDEO12_240x180_10FPS: KORVO_VIDEO08_ONDEMAND: VGA camera/HMI untouched, QVGA HTTP on demand.
  * VIDEO PAIR / SIP SDP Gateway2 control: future integration, not implemented here. */
 #include "korvo_video01.h"
 #include <stdio.h>
@@ -14,13 +14,13 @@
 #include "freertos/semphr.h"
 #define SRC_W 640U
 #define SRC_H 480U
-#define DST_W 640U
-#define DST_H 480U
+#define DST_W 240U
+#define DST_H 180U
 #define RAW_BYTES (DST_W*DST_H*2U)
 #define RGB_BYTES (DST_W*DST_H*3U)
 #define JPEG_CAP (256U*1024U)
 #define INTERVAL_US 100000LL
-static const char *TAG="KORVO_VIDEO08";
+static const char *TAG="KORVO_VIDEO12";
 static uint8_t *raw_frame,*jpeg_frame,*rgb888_frame;
 static SemaphoreHandle_t raw_mutex,jpg_mutex;
 static TaskHandle_t encoder_task;
@@ -88,8 +88,18 @@ void korvo_video01_capture(const uint8_t *p,uint32_t w,uint32_t h,size_t len){
         if(xTaskCreate(jpeg_worker,"korvo_jpeg",8192,NULL,4,&encoder_task)!=pdPASS){ESP_LOGE(TAG,"JPEG worker task failed");return;}
     }
     if(xSemaphoreTake(raw_mutex,0)!=pdTRUE)return;
-    /* WEB copy only: full VGA, without resampling or touching LVGL buffer. */
-    memcpy(raw_frame,p,RAW_BYTES);
+    /* WEB only: nearest-neighbor 640x480 -> 240x180 directly into RGB565
+     * destination buffer. No full-VGA copy; HMI buffer remains untouched. */
+    for (uint32_t y=0; y<DST_H; ++y) {
+        const uint32_t sy = SRC_H - 1U - ((y * SRC_H) / DST_H);
+        const uint8_t *src = p + (size_t)sy * SRC_W * 2U;
+        uint8_t *dst = raw_frame + (size_t)y * DST_W * 2U;
+        for (uint32_t x=0; x<DST_W; ++x) {
+            const uint32_t sx = SRC_W - 1U - ((x * SRC_W) / DST_W);
+            dst[2U*x] = src[2U*sx];
+            dst[2U*x+1] = src[2U*sx+1];
+        }
+    }
     pending=true;last_sample=now;
     snapshot_pending=false;
     xSemaphoreGive(raw_mutex);
@@ -102,7 +112,7 @@ static esp_err_t video_status(httpd_req_t *r){
     char b[560];
     int64_t age=jpeg_timestamp?(esp_timer_get_time()-jpeg_timestamp)/1000:-1;
     int64_t cam_age=camera_timestamp?(esp_timer_get_time()-camera_timestamp)/1000:-1;
-    snprintf(b,sizeof(b),"{\"ok\":%s,\"camera\":\"%s\",\"startup_jpeg_test\":\"%s\",\"stream_state\":\"%s\",\"clients\":%lu,\"jpeg_active\":%s,\"format\":\"JPEG\",\"width\":640,\"height\":480,\"fps_target\":10,\"frames\":%lu,\"age_ms\":%lld,\"camera_age_ms\":%lld,\"jpeg_bytes\":%u,\"input_w\":%lu,\"input_h\":%lu,\"input_bytes\":%u,\"callbacks\":%lu,\"rejected\":%lu,\"encode_errors\":%lu,\"stream_port\":8081}",
+    snprintf(b,sizeof(b),"{\"ok\":%s,\"camera\":\"%s\",\"startup_jpeg_test\":\"%s\",\"stream_state\":\"%s\",\"clients\":%lu,\"jpeg_active\":%s,\"format\":\"JPEG\",\"width\":240,\"height\":180,\"fps_target\":10,\"frames\":%lu,\"age_ms\":%lld,\"camera_age_ms\":%lld,\"jpeg_bytes\":%u,\"input_w\":%lu,\"input_h\":%lu,\"input_bytes\":%u,\"callbacks\":%lu,\"rejected\":%lu,\"encode_errors\":%lu,\"stream_port\":8081}",
       korvo_video01_ready()?"true":"false",cam_age>=0&&cam_age<3000?"OK":"DOWN",
       !startup_done?"PENDING":(startup_ok?"OK":"ERROR"),stream_clients?"STREAMING":"READY",
       (unsigned long)stream_clients,stream_clients||snapshot_pending?"true":"false",
@@ -115,9 +125,9 @@ static esp_err_t video_view(httpd_req_t *r){
     static const char page[]=
       "<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
       "<title>KORVO VIDEO-08</title><style>body{background:#101820;color:#eee;font:16px Arial;text-align:center}"
-      "img{display:block;width:640px;max-width:95vw;height:auto;margin:14px auto;border:2px solid #268ad1}"
+      "img{display:block;width:240px;max-width:95vw;height:auto;margin:14px auto;border:2px solid #268ad1}"
       "pre{display:inline-block;text-align:left;color:#8ce0ad;font-size:13px}#msg{color:#ffd28b}</style></head>"
-      "<body><h2>KORVO - VIDEO IP</h2><p>Streaming 640x480 / JPEG / objetivo 10 FPS / ON-DEMAND</p>"
+      "<body><h2>KORVO - VIDEO IP</h2><p>Streaming 240x180 / JPEG / objetivo 10 FPS / ON-DEMAND</p>"
       "<p id='msg'>Conectando MJPEG...</p><img id='v' alt='VIDEO DOWN'>"
       "<p><button onclick='snapshot()'>Ver fotografia</button> <button onclick='stream()'>Ver streaming</button>"
       " <button onclick='stop()'>STOP streaming</button></p><pre id='s'>Conectando...</pre>"
@@ -193,6 +203,6 @@ void korvo_video01_register(httpd_handle_t server){
         httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
         httpd_uri_t sn={.uri="/video/snapshot.jpg",.method=HTTP_GET,.handler=video_snapshot};
         httpd_register_uri_handler(stream_server,&ss);httpd_register_uri_handler(stream_server,&sn);
-        ESP_LOGI(TAG,"MJPEG ON-DEMAND 640x480 server port 8081");
+        ESP_LOGI(TAG,"MJPEG ON-DEMAND 240x180 server port 8081");
     }else ESP_LOGE(TAG,"MJPEG server failed on port 8081");
 }

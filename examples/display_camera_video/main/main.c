@@ -11,6 +11,7 @@
  * @example https://espressif.github.io/esp-launchpad/?flashConfigURL=https://espressif.github.io/esp-bsp/config.toml&app=display_camera_video
  */
 
+#include "esp_timer.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -83,7 +84,7 @@ static uint32_t cam_buff_size = 0;
 static lv_color_format_t lvgl_cam_rgb565_fmt;
 
 /* ===== FACE DETECTION ===== */
-#define FACE_DETECT_EVERY_N_FRAMES 24
+#define FACE_DETECT_EVERY_N_FRAMES 5 /* VIDEO15: maximo nominal 4 muestras/s con 20 FPS de camara; tarea IA independiente */
 #define CAMERA_START_RETRIES        5
 #define VIDEO_OPEN_RETRIES          10
 
@@ -540,54 +541,10 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     uint32_t out_h = camera_buf_ves;
     uint8_t *out_buf = camera_buf;
 
-    /*
-     * FLIP VERTICAL SOLO PARA DISPLAY.
-     * La camara/IA sigue usando camera_buf original.
-     */
-    size_t v17_flip_need = (size_t)camera_buf_hes * camera_buf_ves * 2U;
-    if (v17_flip_display_buffer == NULL ||
-        v17_flip_display_buffer_size < v17_flip_need) {
-        if (v17_flip_display_buffer != NULL) {
-            heap_caps_free(v17_flip_display_buffer);
-        }
-        v17_flip_display_buffer = heap_caps_malloc(
-            v17_flip_need,
-            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
-        );
-        if (v17_flip_display_buffer == NULL) {
-            ESP_LOGE(TAG, "FLIP display buffer allocation failed");
-            return;
-        }
-        v17_flip_display_buffer_size = v17_flip_need;
-    }
-
-    /*
-     * FLIP 180 SOLO PARA DISPLAY.
-     * Vertical: invierte las filas.
-     * Horizontal: invierte los pixeles dentro de cada fila.
-     * camera_buf queda completamente intacto para IA/camara.
-     */
-    const size_t v17_flip_row_bytes = (size_t)camera_buf_hes * 2U;
-    for (uint32_t v17_y = 0; v17_y < camera_buf_ves; ++v17_y) {
-        const uint8_t *v17_src =
-            camera_buf + ((size_t)(camera_buf_ves - 1U - v17_y) * v17_flip_row_bytes);
-        uint8_t *v17_dst =
-            v17_flip_display_buffer + ((size_t)v17_y * v17_flip_row_bytes);
-
-        for (uint32_t v17_x = 0; v17_x < camera_buf_hes; ++v17_x) {
-            const size_t src_pixel =
-                ((size_t)(camera_buf_hes - 1U - v17_x)) * 2U;
-            const size_t dst_pixel =
-                ((size_t)v17_x) * 2U;
-
-            v17_dst[dst_pixel]     = v17_src[src_pixel];
-            v17_dst[dst_pixel + 1] = v17_src[src_pixel + 1];
-        }
-    }
-
-    out_buf = v17_flip_display_buffer;
-    /* VIDEO-04: copiar solo cuadros muestreados del buffer orientado para HMI. */
-    korvo_video01_capture(out_buf,out_w,out_h,(size_t)out_w*out_h*2U);
+    /* KORVO_VIDEO13_HMI_QVGA20: feed MJPEG from the ORIGINAL VGA frame.
+     * VIDEO12 now rotates during its own RGB565 downsampling.
+     * IA and motion also keep using original VGA. */
+    korvo_video01_capture(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
 
     /*
      * Lightweight motion sampling runs independently from ESP-DL.
@@ -659,9 +616,45 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         }
     }
 
+    /* KORVO_VIDEO13_HMI_QVGA20: HMI only, maximum 20 FPS.
+     * Keep the camera/IA/motion and the MJPEG path independent. */
+    static int64_t hmi_last_us = 0;
+    int64_t hmi_now_us = esp_timer_get_time();
+    if ((hmi_now_us - hmi_last_us) < 50000LL) return;
+    hmi_last_us = hmi_now_us;
+    if (camera_buf_hes != 640U || camera_buf_ves != 480U ||
+        camera_buf_len < 640U*480U*2U) return;
+    const size_t hmi_need = 400U*300U*2U; /* VIDEO16: buffer RGB565 final */
+    if (v17_flip_display_buffer == NULL || v17_flip_display_buffer_size < hmi_need) {
+        if (v17_flip_display_buffer != NULL) heap_caps_free(v17_flip_display_buffer);
+        v17_flip_display_buffer = heap_caps_malloc(hmi_need, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (v17_flip_display_buffer == NULL) {
+            v17_flip_display_buffer_size = 0;
+            ESP_LOGE(TAG, "VIDEO13 HMI QVGA buffer allocation failed");
+            return;
+        }
+        v17_flip_display_buffer_size = hmi_need;
+    }
+    /* KORVO_VIDEO16_DIRECT_400X300: VGA 640x480 -> HMI 400x300.
+     * Muestreo directo nearest-neighbor y giro 180, una sola pasada.
+     * Sin zoom LVGL, sin tocar sensor, IA ni streaming. */
+    for (uint32_t y = 0; y < 300U; ++y) {
+        const uint32_t sy = 479U - ((y * 480U) / 300U);
+        const uint8_t *src = camera_buf + (size_t)sy * 640U * 2U;
+        uint8_t *dst = v17_flip_display_buffer + (size_t)y * 400U * 2U;
+        for (uint32_t x = 0; x < 400U; ++x) {
+            const size_t sx = (size_t)(639U - ((x * 640U) / 400U)) * 2U;
+            dst[2U*x] = src[sx];
+            dst[2U*x+1U] = src[sx+1U];
+        }
+    }
+    out_buf = v17_flip_display_buffer;
+    out_w = 400U; out_h = 300U;
     bsp_display_lock(0);
     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
-    lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+    /* KORVO_VIDEO14_HMI_CENTER_QVGA: center 320x240 within 400x300 viewport. */
+    /* KORVO_VIDEO15_SCALE_125: 320x240 source displayed at 400x300. */
+    /* Scale and position configured once at canvas initialization. */
     lv_obj_invalidate(camera_canvas);
     bsp_display_unlock();
 }
@@ -967,7 +960,7 @@ void app_main(void)
     }
 
     /* Allocate canvas buffers */
-    cam_buff_size = ALIGN_UP(320U * 240U * 2U, data_cache_line_size); /* V17 */
+    cam_buff_size = ALIGN_UP(400U * 300U * 2U, data_cache_line_size); /* VIDEO16 */ /* V17 */
     for (int i = 0; i < NUM_BUFS; i++) {
         cam_buff[i] = heap_caps_aligned_calloc(data_cache_line_size, 1, cam_buff_size, MALLOC_CAP_SPIRAM);
         if (cam_buff[i] == NULL) {
@@ -1044,9 +1037,11 @@ void app_main(void)
     lv_obj_set_style_bg_opa(v17_video_viewport, LV_OPA_COVER, 0);
     lv_obj_clear_flag(v17_video_viewport, LV_OBJ_FLAG_SCROLLABLE);
     camera_canvas = lv_canvas_create(v17_video_viewport);
-    lv_canvas_set_buffer(camera_canvas, cam_buff[0], 400, 300, lvgl_cam_rgb565_fmt); /* V17.8 */
+    /* Initial canvas geometry must match the 320x240 buffer produced by VIDEO13. */
+    lv_canvas_set_buffer(camera_canvas, cam_buff[0], 400, 300, lvgl_cam_rgb565_fmt); /* VIDEO16 */
     assert(camera_canvas);
-    lv_obj_set_pos(camera_canvas, 0, 0); /* V17.2 */
+    lv_obj_set_pos(camera_canvas, 0, 0); /* VIDEO16: 400x300 sin zoom */
+    lv_image_set_scale(camera_canvas, 256); /* LVGL 256=100% */
 /* ===== KORVO ACCESS HMI ===== */
     korvo_hmi_init();
 
