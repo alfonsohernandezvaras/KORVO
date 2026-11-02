@@ -20,6 +20,7 @@
 #include "linux/videodev2.h"
 #include "esp_video_init.h"
 #include "app_video.h"
+#include "korvo_camera_settings.h"
 #include "bsp/esp-bsp.h"
 
 static const char *TAG = "app_video";
@@ -112,42 +113,51 @@ int app_video_open(char *dev, video_fmt_t init_fmt)
     log_v4l2_fourcc(default_format.fmt.pix.pixelformat, "initial pixel format");
     korvo_v4l2_dump_modes(fd);
 
-    /* VIDEO18: negociacion unica en app_video_open; respaldo VGA comprobado. */
+    /* KORVO_VIDEO19_CAMERA_MANAGER: seleccionar modo NVS antes de reservar DMA. */
     {
-        struct v4l2_format requested = {0};
-        requested.type = type;
-        requested.fmt.pix.width = 400;
-        requested.fmt.pix.height = 300;
-        requested.fmt.pix.pixelformat = default_format.fmt.pix.pixelformat;
-        requested.fmt.pix.field = V4L2_FIELD_ANY;
-        int set_result = ioctl(fd, VIDIOC_S_FMT, &requested);
-        struct v4l2_format actual = {0};
-        actual.type = type;
-        int get_result = ioctl(fd, VIDIOC_G_FMT, &actual);
-        ESP_LOGI(TAG, "VIDEO18 REQUEST=400x300 set=%d get=%d actual=%lux%lu",
-                 set_result, get_result,
-                 (unsigned long)actual.fmt.pix.width,
+        korvo_camera_setting_t cfg=korvo_camera_setting_read();
+        struct v4l2_format requested={0};
+        requested.type=type;
+        requested.fmt.pix.width=cfg.width;
+        requested.fmt.pix.height=cfg.height;
+        requested.fmt.pix.pixelformat=default_format.fmt.pix.pixelformat;
+        requested.fmt.pix.field=V4L2_FIELD_ANY;
+        int sr=ioctl(fd,VIDIOC_S_FMT,&requested);
+        struct v4l2_format actual={0}; actual.type=type;
+        int gr=ioctl(fd,VIDIOC_G_FMT,&actual);
+        ESP_LOGI(TAG,"VIDEO19 REQUEST=%ux%u S_FMT=%d G_FMT=%d ACTUAL=%lux%lu",
+                 cfg.width,cfg.height,sr,gr,(unsigned long)actual.fmt.pix.width,
                  (unsigned long)actual.fmt.pix.height);
-        if (set_result != 0 || get_result != 0 ||
-            (actual.fmt.pix.width != 400 || actual.fmt.pix.height != 300)) {
-            struct v4l2_format vga = {0};
-            vga.type = type;
-            vga.fmt.pix.width = 640;
-            vga.fmt.pix.height = 480;
-            vga.fmt.pix.pixelformat = default_format.fmt.pix.pixelformat;
-            vga.fmt.pix.field = V4L2_FIELD_ANY;
-            ESP_LOGW(TAG, "VIDEO18 FALLBACK=640x480");
-            if (ioctl(fd, VIDIOC_S_FMT, &vga) != 0) {
-                ESP_LOGE(TAG, "VIDEO18 VGA fallback failed");
-                goto exit_0;
-            }
-            actual.type = type;
-            if (ioctl(fd, VIDIOC_G_FMT, &actual) != 0 ||
-                actual.fmt.pix.width != 640 || actual.fmt.pix.height != 480) {
-                ESP_LOGE(TAG, "VIDEO18 VGA fallback verification failed");
-                goto exit_0;
-            }
+        if (sr!=0 || gr!=0 || actual.fmt.pix.width!=cfg.width || actual.fmt.pix.height!=cfg.height) {
+            ESP_LOGW(TAG,"VIDEO19 modo no soportado; restaurando VGA 640x480");
+            struct v4l2_format fallback={0}; fallback.type=type;
+            fallback.fmt.pix.width=640; fallback.fmt.pix.height=480;
+            fallback.fmt.pix.pixelformat=default_format.fmt.pix.pixelformat;
+            fallback.fmt.pix.field=V4L2_FIELD_ANY;
+            if (ioctl(fd,VIDIOC_S_FMT,&fallback)!=0) goto exit_0;
+            actual.type=type;
+            if (ioctl(fd,VIDIOC_G_FMT,&actual)!=0 ||
+                actual.fmt.pix.width!=640 || actual.fmt.pix.height!=480) goto exit_0;
         }
+        /* VIDIOC_S_PARM es opcional: el driver puede rechazarlo o ignorarlo.
+         * No se fuerza un FPS ficticio ni se bloquea la captura por rechazo. */
+#ifdef VIDIOC_S_PARM
+        struct v4l2_streamparm parm={0};
+        parm.type=type;
+        parm.parm.capture.timeperframe.numerator=1;
+        parm.parm.capture.timeperframe.denominator=cfg.fps;
+        int pr=ioctl(fd,VIDIOC_S_PARM,&parm);
+        ESP_LOGI(TAG,"VIDEO19 FPS REQUEST=%u S_PARM=%d",cfg.fps,pr);
+#ifdef VIDIOC_G_PARM
+        struct v4l2_streamparm readparm={0}; readparm.type=type;
+        if (ioctl(fd,VIDIOC_G_PARM,&readparm)==0 &&
+            readparm.parm.capture.timeperframe.numerator!=0) {
+            ESP_LOGI(TAG,"VIDEO19 FPS DRIVER=%lu/%lu seconds/frame",
+                     (unsigned long)readparm.parm.capture.timeperframe.numerator,
+                     (unsigned long)readparm.parm.capture.timeperframe.denominator);
+        }
+#endif
+#endif
     }
 
     if (init_fmt != APP_VIDEO_FMT_DRIVER_DEFAULT &&
