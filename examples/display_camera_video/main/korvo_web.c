@@ -3125,6 +3125,8 @@ esp_err_t korvo_web_start(void)
     c.lru_purge_enable = true;
 
     c.stack_size = 12288;
+    /* KORVO_PERF02_CPU1: mantener el WebServer fuera del nucleo LVGL. */
+    c.core_id = 1;
 
     c.recv_wait_timeout = 10;
 

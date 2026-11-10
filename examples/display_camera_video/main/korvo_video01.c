@@ -11,6 +11,7 @@
 #include "driver/jpeg_encode.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+/* KORVO_PERF02_CPU1: tareas HTTP y JPEG en CPU1; HMI intacta. */
 #include "freertos/semphr.h"
 #include "freertos/idf_additions.h"
 #include "lwip/sockets.h"
@@ -81,7 +82,7 @@ static void stream_restart_task(void *arg){
  if(stream_server){httpd_stop(stream_server);stream_server=NULL;}
  vTaskDelay(pdMS_TO_TICKS(250));
  httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
- cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;
+ cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;cfg.core_id=1;cfg.send_wait_timeout=2;
  esp_err_t e=httpd_start(&stream_server,&cfg);
  if(e==ESP_OK){
    httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
@@ -98,7 +99,7 @@ static esp_err_t video_restart(httpd_req_t *r){
  if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
  if(stream_restart_busy){httpd_resp_set_status(r,"409 Conflict");return httpd_resp_sendstr(r,"{\"error\":\"reinicio en curso\"}");}
  stream_restart_busy=true;stream_restart_result=1;
- if(xTaskCreate(stream_restart_task,"stream2_reset",6144,NULL,5,NULL)!=pdPASS){stream_restart_busy=false;stream_restart_result=-1;httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"No se pudo crear tarea");return ESP_FAIL;}
+ if(xTaskCreatePinnedToCore(stream_restart_task,"stream2_reset",6144,NULL,5,NULL,1)!=pdPASS){stream_restart_busy=false;stream_restart_result=-1;httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"No se pudo crear tarea");return ESP_FAIL;}
  httpd_resp_set_type(r,"application/json");return httpd_resp_sendstr(r,"{\"started\":true}");
 }
 static esp_err_t video_restart_status(httpd_req_t *r){
@@ -164,7 +165,7 @@ void korvo_video01_capture(const uint8_t *p,uint32_t w,uint32_t h,size_t len){
     if(now-last_sample<INTERVAL_US || pending)return;
     if(!buffers_init()){ESP_LOGE(TAG,"PSRAM buffers unavailable");return;}
     if(!encoder_task){
-        if(xTaskCreate(jpeg_worker,"korvo_jpeg",8192,NULL,4,&encoder_task)!=pdPASS){ESP_LOGE(TAG,"JPEG worker task failed");return;}
+        if(xTaskCreatePinnedToCore(jpeg_worker,"korvo_jpeg",8192,NULL,4,&encoder_task,1)!=pdPASS){ESP_LOGE(TAG,"JPEG worker task failed");return;}
     }
     if(!stream2_enabled || xSemaphoreTake(raw_mutex,0)!=pdTRUE)return;
     if(!stream2_enabled){xSemaphoreGive(raw_mutex);return;}
@@ -234,7 +235,7 @@ static esp_err_t video_view(httpd_req_t *r){
       "<p><button onclick='snapshot()'>Ver fotografia</button> <button onclick='stream()'>Ver streaming</button>"
       " <button onclick='stop()'>STOP streaming</button></p>"
       "<p>Servicio STREAM2: <button onclick='service(1)'>HABILITAR</button> "
-      "<button onclick='service(0)'>DESHABILITAR</button> <button onclick='restartStream()'>REINICIAR STREAM2</button> <button onclick='location.href=\"/video/taskmanager\"'>Ver Task Manager</button></p><p><button onclick='aiSet(1)'>ACTIVAR IA ESP-DL</button> <button onclick='aiSet(0)'>DESACTIVAR IA ESP-DL</button></p><p id='ai_state'>IA ESP-DL: consultando...</p><pre id='s'>Conectando...</pre>"
+      "<button onclick='service(0)'>DESHABILITAR</button> <button onclick='restartStream()'>REINICIAR STREAM2</button></p><p><button onclick='aiSet(1)'>ACTIVAR IA ESP-DL</button> <button onclick='aiSet(0)'>DESACTIVAR IA ESP-DL</button></p><p id='ai_state'>IA ESP-DL: consultando...</p><pre id='s'>Conectando...</pre>"
       "<script>function aiRefresh(){fetch('/video/ai',{cache:'no-store'})"
       ".then(r=>r.json()).then(d=>{document.getElementById('ai_state').textContent='IA ESP-DL: '+(d.esp_dl_enabled?'ON':'OFF')}).catch(()=>{});}"
       "function aiSet(v){fetch('/video/ai?enabled='+v,{cache:'no-store',credentials:'same-origin'})"
@@ -333,37 +334,6 @@ static esp_err_t video_ai_control(httpd_req_t *r) {
     httpd_resp_set_hdr(r,"Cache-Control","no-store");
     return httpd_resp_sendstr(r,reply);
 }
-/* DIAG01: lectura de tareas sin manipular afinidades ni scheduler. */
-static esp_err_t taskmanager_json(httpd_req_t *r){
- if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
- UBaseType_t count=uxTaskGetNumberOfTasks();
- if(count>96)count=96;
- TaskStatus_t *tasks=calloc(count+8,sizeof(TaskStatus_t));
- if(!tasks){httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"Sin memoria");return ESP_FAIL;}
- configRUN_TIME_COUNTER_TYPE total=0;
- UBaseType_t n=uxTaskGetSystemState(tasks,count+8,&total);
- httpd_resp_set_type(r,"application/json");httpd_resp_set_hdr(r,"Cache-Control","no-store");
- httpd_resp_send_chunk(r,"{\"tasks\":[",-1);
- for(UBaseType_t i=0;i<n;i++){
-  char b[280];const char *name=tasks[i].pcTaskName;
-  char safe[configMAX_TASK_NAME_LEN*2+1];size_t j=0;
-  for(size_t k=0;name[k] && j<sizeof(safe)-2;k++){char c=name[k];safe[j++]=(c=='"'||c=='\\'||(unsigned char)c<32)?'_':c;}safe[j]=0;
-  snprintf(b,sizeof(b),"%s{\"name\":\"%s\",\"priority\":%lu,\"stack_free_bytes\":%lu,\"runtime\":%llu,\"state\":%d}",i?",":"",safe,(unsigned long)tasks[i].uxCurrentPriority,(unsigned long)tasks[i].usStackHighWaterMark,(unsigned long long)tasks[i].ulRunTimeCounter,(int)tasks[i].eCurrentState);
-  httpd_resp_send_chunk(r,b,-1);
- }
- char tail[128];snprintf(tail,sizeof(tail),"],\"count\":%lu,\"heap_free\":%lu}",(unsigned long)n,(unsigned long)heap_caps_get_free_size(MALLOC_CAP_8BIT));
- httpd_resp_send_chunk(r,tail,-1);httpd_resp_send_chunk(r,NULL,0);free(tasks);return ESP_OK;
-}
-static esp_err_t taskmanager_page(httpd_req_t *r){
- if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
- static const char page[]="<!doctype html><html lang='es'><meta charset='utf-8'><title>KORVO Task Manager</title>"
- "<style>body{background:#101820;color:#eee;font:14px Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #455;padding:7px;text-align:left}th{color:#8ce0ad}</style>"
- "<h2>KORVO - TASK MANAGER</h2><p><a href='/video/view' style='color:#8ce0ad'>Volver a VIDEO IP</a></p><p id='info'>Consultando...</p>"
- "<table><thead><tr><th>Tarea</th><th>Prioridad</th><th>Stack libre (bytes)</th><th>Runtime acumulado</th><th>Estado</th></tr></thead><tbody id='tasks'></tbody></table>"
- "<p>Runtime acumulado: contador FreeRTOS, NO porcentaje CPU. La afinidad y CPU por tarea requieren validacion adicional.</p>"
- "<script>function refresh(){fetch('/video/tasks',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(d=>{document.getElementById('info').textContent='Tareas: '+d.count+' | Heap libre: '+d.heap_free+' bytes';let b=document.getElementById('tasks');b.replaceChildren();for(let t of d.tasks){let tr=document.createElement('tr');for(let v of [t.name,t.priority,t.stack_free_bytes,t.runtime,t.state]){let td=document.createElement('td');td.textContent=v;tr.appendChild(td)}b.appendChild(tr)}}).catch(e=>document.getElementById('info').textContent='Error: '+e.message)}refresh();setInterval(refresh,2000)</script></html>";
- httpd_resp_set_type(r,"text/html; charset=utf-8");return httpd_resp_sendstr(r,page);
-}
 void korvo_video01_register(httpd_handle_t server){
     httpd_uri_t ai={.uri="/video/ai",.method=HTTP_GET,.handler=video_ai_control};
     httpd_register_uri_handler(server,&ai);
@@ -375,12 +345,9 @@ void korvo_video01_register(httpd_handle_t server){
     httpd_register_uri_handler(server,&svc);
     httpd_uri_t reset={.uri="/video/restart",.method=HTTP_POST,.handler=video_restart};
     httpd_uri_t reset_status={.uri="/video/restart/status",.method=HTTP_GET,.handler=video_restart_status};
-    httpd_uri_t tm={.uri="/video/taskmanager",.method=HTTP_GET,.handler=taskmanager_page};
-    httpd_uri_t tj={.uri="/video/tasks",.method=HTTP_GET,.handler=taskmanager_json};
     httpd_register_uri_handler(server,&reset);httpd_register_uri_handler(server,&reset_status);
-    httpd_register_uri_handler(server,&tm);httpd_register_uri_handler(server,&tj);
     httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
-    cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;
+    cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;cfg.core_id=1;cfg.send_wait_timeout=2;
     if(httpd_start(&stream_server,&cfg)==ESP_OK){
         httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
         httpd_uri_t sn={.uri="/video/snapshot.jpg",.method=HTTP_GET,.handler=video_snapshot};
