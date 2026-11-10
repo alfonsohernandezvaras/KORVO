@@ -225,41 +225,9 @@ static esp_err_t video_service(httpd_req_t *r){
     return httpd_resp_sendstr(r,stream2_enabled?"{\"stream2_enabled\":true}":"{\"stream2_enabled\":false}");
 }
 static esp_err_t video_view(httpd_req_t *r){
-    static const char page[]=
-      "<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-      "<title>KORVO VIDEO-08</title><style>body{background:#101820;color:#eee;font:16px Arial;text-align:center}"
-      "img{display:block;width:240px;max-width:95vw;height:auto;margin:14px auto;border:2px solid #268ad1}"
-      "pre{display:inline-block;text-align:left;color:#8ce0ad;font-size:13px}#msg{color:#ffd28b}</style></head>"
-      "<body><h2>KORVO - VIDEO IP</h2><p>Streaming 240x180 / JPEG / objetivo 10 FPS / ON-DEMAND</p>"
-      "<p id='msg'>Conectando MJPEG...</p><img id='v' alt='VIDEO DOWN'>"
-      "<p><button onclick='snapshot()'>Ver fotografia</button> <button onclick='stream()'>Ver streaming</button>"
-      " <button onclick='stop()'>STOP streaming</button></p>"
-      "<p>Servicio STREAM2: <button onclick='service(1)'>HABILITAR</button> "
-      "<button onclick='service(0)'>DESHABILITAR</button> <button onclick='restartStream()'>REINICIAR STREAM2</button></p><p><button onclick='aiSet(1)'>ACTIVAR IA ESP-DL</button> <button onclick='aiSet(0)'>DESACTIVAR IA ESP-DL</button></p><p id='ai_state'>IA ESP-DL: consultando...</p><pre id='s'>Conectando...</pre>"
-      "<script>function aiRefresh(){fetch('/video/ai',{cache:'no-store'})"
-      ".then(r=>r.json()).then(d=>{document.getElementById('ai_state').textContent='IA ESP-DL: '+(d.esp_dl_enabled?'ON':'OFF')}).catch(()=>{});}"
-      "function aiSet(v){fetch('/video/ai?enabled='+v,{cache:'no-store',credentials:'same-origin'})"
-      ".then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(()=>aiRefresh()).catch(e=>{document.getElementById('ai_state').textContent='ERROR IA: '+e.message});}"
-      "setInterval(aiRefresh,2000);aiRefresh();"
-      "const u=location.protocol+'//'+location.hostname+':8081';"
-      "const im=document.getElementById('v'),msg=document.getElementById('msg');"
-      "function stop(){im.removeAttribute('src');msg.textContent='Streaming detenido';}"
-      "function service(n){if(!n)stop();fetch('/video/service?enabled='+n,{method:'POST',credentials:'same-origin'})"
-      ".then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()})"
-      ".then(d=>{msg.textContent='STREAM2 '+(d.stream2_enabled?'HABILITADO':'DESHABILITADO')})"
-      ".catch(e=>{msg.textContent='ERROR control STREAM2: '+e.message})}"
-      "function restartStream(){stop();if(!confirm('Reiniciar STREAM2 y desconectar clientes?'))return;msg.textContent='Reiniciando STREAM2...';"
-      "fetch('/video/restart',{method:'POST',credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()})"
-      ".then(()=>{let n=0;let timer=setInterval(()=>fetch('/video/restart/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.busy&&n++<30)return;clearInterval(timer);if(d.result===2){msg.textContent='STREAM2 reiniciado';stream()}else msg.textContent='ERROR reinicio STREAM2 (ver consola)';}).catch(()=>{clearInterval(timer);msg.textContent='ERROR consultando reinicio'}),500)})"
-      ".catch(e=>msg.textContent='ERROR: '+e.message)}"
-      "function snapshot(){stop();im.src=u+'/video/snapshot.jpg?t='+Date.now();msg.textContent='Fotografia JPEG';}"
-      "function stream(){stop();im.src=u+'/video/stream?t='+Date.now();msg.textContent='Conectando MJPEG...';}"
-      "im.onload=()=>{msg.textContent='Imagen recibida';};"
-      "im.onerror=()=>{msg.textContent='No se pudo cargar video desde puerto 8081';};"
-      "stream();setInterval(()=>fetch('/video/status',{cache:'no-store'}).then(x=>x.json())"
-      ".then(x=>{document.getElementById('s').textContent=JSON.stringify(x,null,2)})"
-      ".catch(()=>{}),2000);</script></body></html>";
-    httpd_resp_set_type(r,"text/html; charset=utf-8");return httpd_resp_sendstr(r,page);
+    httpd_resp_set_status(r,"302 Found");
+    httpd_resp_set_hdr(r,"Location","/gateway");
+    return httpd_resp_sendstr(r,"");
 }
 static esp_err_t video_color(httpd_req_t *r){
     char q[64]={0},val[8]={0};

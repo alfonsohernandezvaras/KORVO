@@ -92,23 +92,23 @@ static const char *STYLE =
 
     ".top{background:#171f28;padding:10px 14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}"
 
-    ".wrap{max-width:960px;margin:12px auto;padding:0 12px}"
+    ".wrap{max-width:1180px;margin:10px auto;padding:0 10px}"
 
     ".card{background:#18212b;border:1px solid #34404d;"
 
-    "border-radius:10px;padding:14px 16px;margin-bottom:12px}"
+    "border-radius:8px;padding:10px 12px;margin-bottom:9px}"
 
     "a{color:#8ecbff;text-decoration:none;margin-right:8px}"
 
     "label{display:block;margin:0 0 4px;color:#aebac6;font-size:12px}"
 
-    "input,select{width:100%;min-width:0;padding:8px 9px;border:1px solid #445363;"
+    "input,select{width:100%;min-width:0;padding:6px 8px;border:1px solid #445363;"
 
     "border-radius:6px;background:#0f151b;color:white}"
 
     "input[type=checkbox]{width:auto}"
 
-    ".btn{margin-top:10px;padding:9px 14px;border:0;"
+    ".btn{margin-top:7px;padding:7px 11px;border:0;"
 
     "border-radius:6px;font-weight:bold;cursor:pointer}"
 
@@ -118,11 +118,11 @@ static const char *STYLE =
 
     ".grid>div{min-width:0;overflow-wrap:anywhere}"
 
-    ".formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px}"
+    ".formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 9px}"
 
     ".field{min-width:0}.actions{display:flex;gap:8px;flex-wrap:wrap}"
 
-    ".actions .btn{margin-top:8px}.card h2{font-size:18px;margin:0 0 10px}"
+    ".actions .btn{margin-top:6px}.card h2{font-size:16px;margin:0 0 7px}"
 
     ".card h3{font-size:15px;margin:8px 0}.card p{margin:8px 0}"
 
@@ -148,6 +148,22 @@ static const char *STYLE =
 
     ".fill{height:100%;background:#74d680;width:0}"
 
+    ".wrap:has(.web01_home){max-width:1120px}.web01_home{display:grid;grid-template-columns:repeat(2,max-content);gap:10px;justify-content:start;align-items:start}"
+    ".web01_home>.card{margin:0;width:max-content;max-width:100%;min-width:350px}.web01_home .grid{grid-template-columns:165px minmax(140px,max-content)}"
+    ".wrap:has(.web01_network){max-width:800px;margin-left:12px;margin-right:auto}.web01_network{width:min(100%,620px)}"
+    ".web01_network .formgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.web01_network>.card{margin-bottom:9px}"
+    ".wrap:has(.web01_gateway){max-width:1160px}.web01_gateway{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(260px,.95fr);gap:10px;align-items:stretch}"
+    ".web01_gateway>.card{margin:0;min-width:0}.web01_gateway .gw_identity{grid-column:1;grid-row:1}.web01_gateway .gw_pair{grid-column:2;grid-row:1}"
+    ".web01_gateway .gw_link{grid-column:1;grid-row:2}.web01_gateway .gw_video{grid-column:2;grid-row:2;text-align:center}"
+    ".web01_gateway .gw_diag{grid-column:3;grid-row:1/span 2}.web01_gateway .gw_identity .formgrid{grid-template-columns:1fr}"
+    ".web01_gateway .gw_identity input,.web01_gateway .gw_pair input{max-width:100%}.web01_gateway .grid{grid-template-columns:minmax(120px,45%) minmax(0,1fr);gap:5px 7px}"
+    ".web01_gateway .gw_video img{width:240px;height:180px;max-width:100%;object-fit:contain;background:#080d12;border:1px solid #268ad1;margin:4px auto}"
+    ".web01_gateway .vtools{display:flex;justify-content:center;flex-wrap:wrap;gap:5px}.web01_gateway .vtools button{margin:0;padding:5px 8px;font-size:15px;min-width:30px;cursor:pointer}"
+    ".web01_gateway .vtools button.on{background:#1767a5;color:white}.web01_gateway .gw_diag .grid{grid-template-columns:minmax(100px,1fr) minmax(0,1fr)}"
+    ".wrap:has(.web01_firmware){max-width:900px}.web01_firmware{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}"
+    ".web01_firmware>.card{margin:0;min-width:0}.web01_firmware input[type=file]{width:100%}"
+    "@media(max-width:900px){.web01_gateway{grid-template-columns:repeat(2,minmax(0,1fr))}.web01_gateway .gw_diag{grid-column:1/-1;grid-row:3}}"
+    "@media(max-width:650px){.web01_home,.web01_gateway,.web01_firmware{grid-template-columns:1fr}.web01_home>.card{width:100%;min-width:0}.web01_gateway>.card{grid-column:1!important;grid-row:auto!important}.web01_network{width:100%}.web01_network .formgrid{grid-template-columns:1fr}}"
     "</style>";
 
 
@@ -914,7 +930,7 @@ static esp_err_t status_g(httpd_req_t *r)
 
         bz,
 
-        "<div class=card>"
+        "<div class=web01_home><div class=card>"
 
         "<h2>Estado</h2>"
 
@@ -1126,7 +1142,7 @@ static esp_err_t status_g(httpd_req_t *r)
 
         "<div>Diccionario V2</div><div class=%s>%s</div>"
 
-        "</div><p><a href='/gateway'>Configurar Gateway IP</a></p></div>",
+        "</div><p><a href='/gateway'>Configurar Gateway IP</a></p></div></div>",
 
         gw.local.hostname,
 
@@ -1228,7 +1244,7 @@ static esp_err_t net_g(httpd_req_t *r)
 
 
 
-        "<div class=card>"
+        "<div class=web01_network><div class=card>"
 
         "<h2>Red KORVO</h2>"
 
@@ -1324,7 +1340,7 @@ static esp_err_t net_g(httpd_req_t *r)
 
         "</form>"
 
-        "</details>",
+        "</details></div>",
 
 
 
@@ -1772,7 +1788,7 @@ static esp_err_t gateway_g(httpd_req_t *r)
 
     const char *target = gw.expected_gateway.ip[0] ? gw.expected_gateway.ip : net.gateway_node_ip;
 
-    const size_t bz = 6400;
+    const size_t bz = 16000;
 
     char *b = malloc(bz);
 
@@ -1786,7 +1802,7 @@ static esp_err_t gateway_g(httpd_req_t *r)
 
         /* V25-P04 TAG HOST: etiquetas web, NVS intacta. */
 
-        "<div class=card><h2>Identidad KORVO</h2>"
+        "<div class=web01_gateway><div class='card gw_identity'><h2>Identidad KORVO</h2>"
 
         "<p class=small>Identidad de sala / pairing por IP.</p>"
 
@@ -1806,7 +1822,7 @@ static esp_err_t gateway_g(httpd_req_t *r)
 
 
 
-        "<div class=card><h2>Gateway / Pairing por IP</h2>"
+        "<div class='card gw_pair'><h2>Gateway / Pairing por IP</h2>"
 
         "<p class=small>Configure la IP del Gateway; el control se autoriza por IP.</p>"
 
@@ -1826,8 +1842,8 @@ static esp_err_t gateway_g(httpd_req_t *r)
 
 
 
-        "<div class='gateway_cards' style='display:grid;grid-template-columns:minmax(0,1.1fr) minmax(270px,.9fr);gap:12px;align-items:stretch'>"
-        "<div class=card style='margin-bottom:0;min-width:0'><h2>Estado del enlace</h2><div class=grid>"
+        ""
+        "<div class='card gw_link'><h2>Estado del enlace</h2><div class=grid>"
 
         "<div>Gateway configurado</div><div class=mono>%s</div>"
 
@@ -1849,23 +1865,36 @@ static esp_err_t gateway_g(httpd_req_t *r)
 
         "<div>Ultimo error</div><div class=bad>%s</div>"
         "</div></div>"
-        "<div class=card style='margin-bottom:0;min-width:0;text-align:center'>"
+        "<div class='card gw_video'>"
         "<h2>VIDEO STREAMING</h2>"
-        "<img id='gw_mjpeg' alt='Streaming detenido' style='display:block;width:240px;height:180px;max-width:100%%;object-fit:contain;background:#080d12;border:1px solid #268ad1;margin:6px auto'>"
+        "<img id='gw_mjpeg' alt='Streaming detenido'>"
         "<p id='gw_video_state' class=small>Detenido - bajo demanda</p>"
-        "<div style='display:flex;gap:8px;justify-content:center;flex-wrap:wrap'>"
-        "<button type='button' class=btn onclick='gwVideoStart()'>START</button>"
-        "<button type='button' class=btn onclick='gwVideoStop()'>STOP</button>"
-        "<a href='/video/view' target='_blank' style='align-self:center'>VISTA COMPLETA</a>"
-        "</div><p class=small>240 x 180 | 5 FPS | ON-DEMAND</p>"
-        "</div></div>"
-        "<style>@media(max-width:700px){.gateway_cards{grid-template-columns:1fr!important}}</style>"
-        "<script>function gwVideoStop(){var im=document.getElementById('gw_mjpeg');"
-        "if(im){im.removeAttribute('src');}var s=document.getElementById('gw_video_state');"
-        "if(s)s.textContent='Detenido - CPU liberada';}"
-        "function gwVideoStart(){gwVideoStop();var im=document.getElementById('gw_mjpeg');"
-        "if(im)im.src=location.protocol+'//'+location.hostname+':8081/video/stream?t='+Date.now();"
-        "var s=document.getElementById('gw_video_state');if(s)s.textContent='Streaming activo';}</script>",
+        "<div class=vtools>"
+        "<button type=button title='Fotografia' aria-label='Fotografia' onclick='gwVideoSnap()'>&#128247;</button>"
+        "<button type=button title='Iniciar streaming' aria-label='Iniciar streaming' onclick='gwVideoStart()'>&#9654;</button>"
+        "<button type=button title='Detener streaming' aria-label='Detener streaming' onclick='gwVideoStop()'>&#9632;</button>"
+        "<button type=button title='Habilitar STREAM2' aria-label='Habilitar STREAM2' onclick='gwService(1)'>&#10003;</button>"
+        "<button type=button title='Deshabilitar STREAM2' aria-label='Deshabilitar STREAM2' onclick='gwService(0)'>&#10005;</button>"
+        "<button type=button title='Reiniciar STREAM2' aria-label='Reiniciar STREAM2' onclick='gwRestart()'>&#8635;</button>"
+        "<button type=button title='Activar IA' aria-label='Activar IA' onclick='gwAI(1)'>IA+</button>"
+        "<button type=button title='Desactivar IA' aria-label='Desactivar IA' onclick='gwAI(0)'>IA-</button>"
+        "<button type=button title='Ampliar video' aria-label='Ampliar video' onclick='gwFull()'>&#9974;</button>"
+        "</div><p class=small>240 x 180 | 10 FPS objetivo | ON-DEMAND</p><p id=gw_ai_state class=small>IA: --</p>"
+        "</div>"
+        "<div class='card gw_diag'><h2>Diagnostico STREAM2</h2><div id=gw_diag_content class=grid><div>Consultando...</div></div></div></div>"
+        "<script>"
+        "const gwIm=()=>document.getElementById('gw_mjpeg'),gwMsg=()=>document.getElementById('gw_video_state');"
+        "function gwVideoStop(){gwIm().removeAttribute('src');gwMsg().textContent='Detenido - CPU liberada';}"
+        "function gwVideoStart(){gwVideoStop();gwIm().src=location.protocol+'//'+location.hostname+':8081/video/stream?t='+Date.now();gwMsg().textContent='Conectando MJPEG...';}"
+        "function gwVideoSnap(){gwVideoStop();gwIm().src=location.protocol+'//'+location.hostname+':8081/video/snapshot.jpg?t='+Date.now();gwMsg().textContent='Fotografia JPEG';}"
+        "function gwFull(){var src=gwIm().src;if(src)window.open(src,'_blank','noopener');else gwMsg().textContent='Inicie video o fotografia primero';}"
+        "function gwService(v){if(!v)gwVideoStop();fetch('/video/service?enabled='+v,{method:'POST',credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(d=>gwMsg().textContent='STREAM2 '+(d.stream2_enabled?'HABILITADO':'DESHABILITADO')).catch(e=>gwMsg().textContent='ERROR: '+e.message);}"
+        "function gwAI(v){fetch('/video/ai?enabled='+v,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(()=>gwAIRefresh()).catch(e=>document.getElementById('gw_ai_state').textContent='IA ERROR: '+e.message);}"
+        "function gwAIRefresh(){fetch('/video/ai',{cache:'no-store'}).then(r=>r.json()).then(d=>document.getElementById('gw_ai_state').textContent='IA ESP-DL: '+(d.esp_dl_enabled?'ON':'OFF')).catch(()=>{});}"
+        "function gwRestart(){gwVideoStop();if(!confirm('Reiniciar STREAM2 y desconectar clientes?'))return;gwMsg().textContent='Reiniciando STREAM2...';fetch('/video/restart',{method:'POST',credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(()=>{let n=0;let t=setInterval(()=>fetch('/video/restart/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.busy&&n++<30)return;clearInterval(t);if(d.result===2){gwMsg().textContent='STREAM2 reiniciado';gwVideoStart()}else gwMsg().textContent='ERROR reinicio STREAM2';}).catch(()=>{clearInterval(t);gwMsg().textContent='ERROR consultando reinicio'}),500)}).catch(e=>gwMsg().textContent='ERROR: '+e.message);}"
+        "function gwDiag(){fetch('/video/status',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(d=>{let x=document.getElementById('gw_diag_content');x.replaceChildren();Object.keys(d).forEach(k=>{let a=document.createElement('div'),b=document.createElement('div');a.textContent=k;b.textContent=String(d[k]);if(d[k]===true||d[k]==='OK')b.className='ok';if(d[k]===false||d[k]==='DOWN')b.className='bad';x.append(a,b)})}).catch(()=>{document.getElementById('gw_diag_content').textContent='Diagnostico no disponible'})}"
+        "gwIm().onload=()=>gwMsg().textContent='Imagen recibida';gwIm().onerror=()=>gwMsg().textContent='VIDEO DOWN';gwDiag();gwAIRefresh();setInterval(gwDiag,2000);setInterval(gwAIRefresh,4000);"
+        "</script>",
 
         gw.local.name, gw.local.hostname, gw.local.location,
 
@@ -2069,8 +2098,7 @@ static esp_err_t firmware_g(httpd_req_t *r)
 
 
 
-        "<div class=card>"
-
+        "<div class=web01_firmware><div class=card>"
         "<h2>Firmware actual</h2>"
 
 
@@ -2381,7 +2409,7 @@ static esp_err_t firmware_g(httpd_req_t *r)
 
 
 
-        "</div>"
+        "</div></div>"
 
 
 
