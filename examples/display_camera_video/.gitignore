@@ -1,0 +1,9 @@
+build/
+*.BACKUP*
+*.backup*
+*.LOCAL_ANTES*
+sdkconfig.old
+
+/BACKUP_*/
+/.korvo_backup/
+/managed_components_RESPALDO_*/

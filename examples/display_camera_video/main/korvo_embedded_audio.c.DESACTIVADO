@@ -1,0 +1,138 @@
+#include "korvo_embedded_audio.h"
+#include "bsp/esp-bsp.h"
+#include "esp_codec_dev.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <math.h>
+#include <string.h>
+
+static const char *TAG = "korvo_embedded";
+static uint8_t s_vol = 50, s_mic = 50;
+static bool s_loaded = false;
+static esp_codec_dev_handle_t s_spk = NULL, s_input = NULL;
+static bool s_playing = false;
+static int64_t s_last_shin_us = -1000000;
+static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static void load(void) {
+    if (s_loaded) return;
+    portENTER_CRITICAL(&s_mux);
+    if (!s_loaded) {
+        nvs_handle_t n;
+        if (nvs_open("korvo_embed", NVS_READONLY, &n) == ESP_OK) {
+            uint8_t v;
+            if (nvs_get_u8(n, "volume", &v) == ESP_OK && v <= 100) s_vol = v;
+            if (nvs_get_u8(n, "mic", &v) == ESP_OK && v <= 100) s_mic = v;
+            nvs_close(n);
+        }
+        s_loaded = true;
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+static esp_err_t save(const char *key, uint8_t value) {
+    nvs_handle_t n;
+    esp_err_t e = nvs_open("korvo_embed", NVS_READWRITE, &n);
+    if (e != ESP_OK) return e;
+    e = nvs_set_u8(n, key, value);
+    if (e == ESP_OK) e = nvs_commit(n);
+    nvs_close(n);
+    return e;
+}
+uint8_t korvo_embedded_get_volume(void) { load(); return s_vol; }
+uint8_t korvo_embedded_get_mic(void) { load(); return s_mic; }
+esp_err_t korvo_embedded_set_volume(uint8_t v, bool persist) {
+    if (v > 100) return ESP_ERR_INVALID_ARG;
+    load(); s_vol = v;
+    if (s_spk) (void)esp_codec_dev_set_out_vol(s_spk, v);
+    return persist ? save("volume", v) : ESP_OK;
+}
+esp_err_t korvo_embedded_set_mic(uint8_t v, bool persist) {
+    if (v > 100) return ESP_ERR_INVALID_ARG;
+    load(); s_mic = v;
+    if (s_input) (void)esp_codec_dev_set_in_gain(s_input, (float)v * 0.6f);
+    return persist ? save("mic", v) : ESP_OK;
+}
+/* SHIN V2: un solo timbre de 125 ms y cola de silencio de 35 ms.
+ * 22050 Hz, PCM signed 16-bit, estereo intercalado como el BSP por defecto.
+ * El limitador temporal evita multiples LV_EVENT_RELEASED consecutivos.
+ */
+#define SHIN_RATE 22050
+#define SHIN_FRAMES 2756
+#define SHIN_TAIL 772
+#define SHIN_BLOCK 192
+
+static void shin_task(void *arg)
+{
+    (void)arg;
+    if (!s_spk) {
+        s_spk = bsp_audio_codec_speaker_init();
+        if (!s_spk) { ESP_LOGE(TAG, "ES8389 speaker init failed"); goto done; }
+    }
+    esp_err_t e = esp_codec_dev_set_out_vol(s_spk, s_vol);
+    if (e != ESP_OK) ESP_LOGW(TAG, "set volume: %s", esp_err_to_name(e));
+
+    const esp_codec_dev_sample_info_t fs = {
+        .sample_rate = SHIN_RATE, .channel = 2, .bits_per_sample = 16
+    };
+    e = esp_codec_dev_open(s_spk, (esp_codec_dev_sample_info_t *)&fs);
+    if (e != ESP_OK) { ESP_LOGE(TAG, "ES8389 open: %s", esp_err_to_name(e)); goto done; }
+
+    int16_t pcm[SHIN_BLOCK * 2];
+    for (int offset = 0; offset < SHIN_FRAMES + SHIN_TAIL; offset += SHIN_BLOCK) {
+        int frames = SHIN_FRAMES + SHIN_TAIL - offset;
+        if (frames > SHIN_BLOCK) frames = SHIN_BLOCK;
+        for (int i = 0; i < frames; ++i) {
+            const int t = offset + i;
+            int16_t v = 0;
+            if (t < SHIN_FRAMES) {
+                /* Fade-in 7 ms, decaimiento continuo sin clicks.
+                 * Dos parciales para campanilla, amplitud pico < 10% FS. */
+                const float attack = (t < 154) ? (float)t / 154.0f : 1.0f;
+                const float tail = (float)(SHIN_FRAMES - t) / (float)SHIN_FRAMES;
+                const float env = attack * tail * tail;
+                const float phase = 6.28318530718f * (float)t / (float)SHIN_RATE;
+                const float tone = 0.74f * sinf(1175.0f * phase)
+                                 + 0.26f * sinf(1762.5f * phase);
+                v = (int16_t)(3000.0f * env * tone);
+            }
+            pcm[i * 2] = v;
+            pcm[i * 2 + 1] = v;
+        }
+        e = esp_codec_dev_write(s_spk, pcm, frames * sizeof(int16_t) * 2);
+        if (e != ESP_OK) {
+            ESP_LOGE(TAG, "ES8389 write: %s", esp_err_to_name(e));
+            break;
+        }
+    }
+    e = esp_codec_dev_close(s_spk);
+    if (e != ESP_OK) ESP_LOGW(TAG, "ES8389 close: %s", esp_err_to_name(e));
+done:
+    portENTER_CRITICAL(&s_mux);
+    s_playing = false;
+    portEXIT_CRITICAL(&s_mux);
+    vTaskDelete(NULL);
+}
+
+void korvo_embedded_beep(void)
+{
+    load();
+    const int64_t now = esp_timer_get_time();
+    bool start = false;
+    portENTER_CRITICAL(&s_mux);
+    if (!s_playing && now - s_last_shin_us >= 450000) {
+        s_playing = true;
+        s_last_shin_us = now;
+        start = true;
+    }
+    portEXIT_CRITICAL(&s_mux);
+    if (!start) return;
+    if (xTaskCreate(shin_task, "korvo_shin", 4096, NULL, 4, NULL) != pdPASS) {
+        portENTER_CRITICAL(&s_mux);
+        s_playing = false;
+        portEXIT_CRITICAL(&s_mux);
+        ESP_LOGE(TAG, "cannot create SHIN task");
+    }
+}

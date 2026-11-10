@@ -1,0 +1,9 @@
+#pragma once
+#include <stdint.h>
+#include <stdbool.h>
+#include "esp_err.h"
+uint8_t korvo_embedded_get_volume(void);
+uint8_t korvo_embedded_get_mic(void);
+esp_err_t korvo_embedded_set_volume(uint8_t value, bool persist);
+esp_err_t korvo_embedded_set_mic(uint8_t value, bool persist);
+void korvo_embedded_beep(void);

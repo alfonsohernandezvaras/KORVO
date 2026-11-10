@@ -1,0 +1,11 @@
+**/build/
+*.BACKUP*
+*.backup*
+*.LOCAL_ANTES*
+sdkconfig.old
+/examples/display_camera_video/build/
+/examples/display_camera_video/managed_components_RESPALDO_ANTES_VIDEO02/
+*.BACKUP_*
+*.bak
+*.bak_*
+BACKUP_*/

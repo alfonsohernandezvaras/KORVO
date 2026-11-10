@@ -1,0 +1,87 @@
+name: Push components to Espressif Component Service
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/**'
+      - 'bsp/**'
+      - 'components/**'
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/**'
+      - 'bsp/**'
+      - 'components/**'
+
+jobs:
+  upload_bsp_components:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        bsp:
+          - esp32_azure_iot_kit
+          - esp32_s2_kaluga_kit
+          - esp_wrover_kit
+          - esp-box
+          - esp-box-3
+          - esp-box-lite
+          - esp32_s3_usb_otg
+          - esp32_s3_eye
+          - esp32_s3_lcd_ev_board
+          - esp32_s3_korvo_1
+          - esp32_s3_korvo_2
+          - esp32_lyrat
+          - esp32_c3_lcdkit
+          - esp_bsp_generic
+          - esp_bsp_devkit
+          - esp32_p4_function_ev_board
+          - m5stack_core
+          - m5stack_core_2
+          - m5stack_core_s3
+          - m5_atom_s3
+          - m5dial
+          - esp32_p4_eye
+          - m5stack_tab5
+          - esp_vocat
+          - esp32_s31_korvo_1
+          - esp_sensairshuttle
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare BSP examples
+        run: |
+          pip install pyyaml
+          python .github/ci/bsp_example_update.py --bsp=${{ matrix.bsp }}
+
+      - name: Upload BSP components
+        uses: espressif/upload-components-ci-action@v2
+        with:
+          components: |
+            bsp/${{ matrix.bsp }}
+          namespace: "espressif"
+          api_token: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          dry_run: ${{ github.ref_name != 'master' || github.repository_owner != 'espressif' }}
+
+  upload_other_components:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Discover components to upload
+        id: discover_components
+        run: |
+          config_files=$(grep -rl '^version:' components/)
+          component_dirs=$(dirname $config_files)
+          component_list=""
+          for dir in $component_dirs; do
+              component_list="$component_list$dir;"
+          done
+          echo "components=$component_list" >> $GITHUB_OUTPUT
+      - name: Upload Other components
+        uses: espressif/upload-components-ci-action@v2
+        with:
+          components: ${{ steps.discover_components.outputs.components }}
+          namespace: "espressif"
+          api_token: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          dry_run: ${{ github.ref_name != 'master' || github.repository_owner != 'espressif' }}
