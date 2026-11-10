@@ -12,6 +12,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "freertos/idf_additions.h"
+#include "lwip/sockets.h"
+#include "esp_err.h"
+#include <inttypes.h>
+#include <stdlib.h>
+
 #define SRC_W 640U
 #define SRC_H 480U
 #define DST_W 240U
@@ -32,6 +38,74 @@ static volatile int64_t camera_timestamp,jpeg_timestamp;
 static volatile bool pending,startup_done,startup_ok,snapshot_pending;
 /* Diagnostico: 1=STREAM2 habilitado, 0=sin copia ni JPEG de STREAM2. */
 static volatile bool stream2_enabled = true;
+/* KORVO_DIAG01_TASKMANAGER: diagnostico y recuperacion STREAM2. */
+static volatile uint32_t stream_epoch=1;
+static volatile bool stream_restart_busy=false;
+static volatile int stream_restart_result=0; /* 0 idle,1 ejecutando,2 OK,-1 error */
+static portMUX_TYPE stream_lock=portMUX_INITIALIZER_UNLOCKED;
+static int stream_fds[4]={-1,-1,-1,-1};
+static bool stream_client_add(int fd){
+ bool ok=false;
+ portENTER_CRITICAL(&stream_lock);
+ for(int i=0;i<4;i++)if(stream_fds[i]==-1){stream_fds[i]=fd;stream_clients++;ok=true;break;}
+ portEXIT_CRITICAL(&stream_lock);return ok;
+}
+static void stream_client_remove(int fd){
+ portENTER_CRITICAL(&stream_lock);
+ for(int i=0;i<4;i++)if(stream_fds[i]==fd){stream_fds[i]=-1;if(stream_clients)stream_clients--;break;}
+ portEXIT_CRITICAL(&stream_lock);
+}
+static bool korvo_admin(httpd_req_t *r){
+ char cookie[256]={0};return httpd_req_get_hdr_value_str(r,"Cookie",cookie,sizeof(cookie))==ESP_OK && strstr(cookie,"KORVO_SESSION=korvo_admin")!=NULL;
+}
+static void stream_close_clients(void){
+ int fds[4];portENTER_CRITICAL(&stream_lock);
+ for(int i=0;i<4;i++)fds[i]=stream_fds[i];
+ portEXIT_CRITICAL(&stream_lock);
+ for(int i=0;i<4;i++)if(fds[i]>=0)shutdown(fds[i],SHUT_RDWR);
+}
+static esp_err_t video_stream(httpd_req_t *r);
+static esp_err_t video_snapshot(httpd_req_t *r);
+static void stream_restart_task(void *arg){
+ (void)arg;
+ stream2_enabled=false;
+ stream_epoch++;
+ snapshot_pending=false;pending=false;
+ stream_close_clients();
+ /* Los handlers deben salir antes de parar HTTPD. */
+ for(int i=0;i<30 && stream_clients;i++)vTaskDelay(pdMS_TO_TICKS(100));
+ if(stream_clients){
+   ESP_LOGE(TAG,"DIAG01 restart: clientes no liberados (%lu)",(unsigned long)stream_clients);
+   stream_restart_result=-1;stream_restart_busy=false;vTaskDelete(NULL);return;
+ }
+ if(stream_server){httpd_stop(stream_server);stream_server=NULL;}
+ vTaskDelay(pdMS_TO_TICKS(250));
+ httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
+ cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;
+ esp_err_t e=httpd_start(&stream_server,&cfg);
+ if(e==ESP_OK){
+   httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
+   httpd_uri_t sn={.uri="/video/snapshot.jpg",.method=HTTP_GET,.handler=video_snapshot};
+   if(httpd_register_uri_handler(stream_server,&ss)!=ESP_OK || httpd_register_uri_handler(stream_server,&sn)!=ESP_OK){
+     httpd_stop(stream_server);stream_server=NULL;e=ESP_FAIL;
+   }
+ }
+ if(e==ESP_OK){stream2_enabled=true;stream_restart_result=2;ESP_LOGW(TAG,"DIAG01 STREAM2 reiniciado");}
+ else {stream_restart_result=-1;ESP_LOGE(TAG,"DIAG01 STREAM2 restart error: %s",esp_err_to_name(e));}
+ stream_restart_busy=false;vTaskDelete(NULL);
+}
+static esp_err_t video_restart(httpd_req_t *r){
+ if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
+ if(stream_restart_busy){httpd_resp_set_status(r,"409 Conflict");return httpd_resp_sendstr(r,"{\"error\":\"reinicio en curso\"}");}
+ stream_restart_busy=true;stream_restart_result=1;
+ if(xTaskCreate(stream_restart_task,"stream2_reset",6144,NULL,5,NULL)!=pdPASS){stream_restart_busy=false;stream_restart_result=-1;httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"No se pudo crear tarea");return ESP_FAIL;}
+ httpd_resp_set_type(r,"application/json");return httpd_resp_sendstr(r,"{\"started\":true}");
+}
+static esp_err_t video_restart_status(httpd_req_t *r){
+ char b[128];snprintf(b,sizeof(b),"{\"busy\":%s,\"result\":%d,\"clients\":%lu}",stream_restart_busy?"true":"false",stream_restart_result,(unsigned long)stream_clients);
+ httpd_resp_set_type(r,"application/json");httpd_resp_set_hdr(r,"Cache-Control","no-store");return httpd_resp_sendstr(r,b);
+}
+
 static volatile int v_stream_bgr=1; /* WEB only, 1=BGR test, 0=original RGB */
 static volatile int v07_byte_swap=1; /* working VIDEO07 default */
 static int64_t last_sample;
@@ -160,7 +234,7 @@ static esp_err_t video_view(httpd_req_t *r){
       "<p><button onclick='snapshot()'>Ver fotografia</button> <button onclick='stream()'>Ver streaming</button>"
       " <button onclick='stop()'>STOP streaming</button></p>"
       "<p>Servicio STREAM2: <button onclick='service(1)'>HABILITAR</button> "
-      "<button onclick='service(0)'>DESHABILITAR</button></p><p><button onclick='aiSet(1)'>ACTIVAR IA ESP-DL</button> <button onclick='aiSet(0)'>DESACTIVAR IA ESP-DL</button></p><p id='ai_state'>IA ESP-DL: consultando...</p><pre id='s'>Conectando...</pre>"
+      "<button onclick='service(0)'>DESHABILITAR</button> <button onclick='restartStream()'>REINICIAR STREAM2</button> <button onclick='location.href=\"/video/taskmanager\"'>Ver Task Manager</button></p><p><button onclick='aiSet(1)'>ACTIVAR IA ESP-DL</button> <button onclick='aiSet(0)'>DESACTIVAR IA ESP-DL</button></p><p id='ai_state'>IA ESP-DL: consultando...</p><pre id='s'>Conectando...</pre>"
       "<script>function aiRefresh(){fetch('/video/ai',{cache:'no-store'})"
       ".then(r=>r.json()).then(d=>{document.getElementById('ai_state').textContent='IA ESP-DL: '+(d.esp_dl_enabled?'ON':'OFF')}).catch(()=>{});}"
       "function aiSet(v){fetch('/video/ai?enabled='+v,{cache:'no-store',credentials:'same-origin'})"
@@ -173,6 +247,10 @@ static esp_err_t video_view(httpd_req_t *r){
       ".then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()})"
       ".then(d=>{msg.textContent='STREAM2 '+(d.stream2_enabled?'HABILITADO':'DESHABILITADO')})"
       ".catch(e=>{msg.textContent='ERROR control STREAM2: '+e.message})}"
+      "function restartStream(){stop();if(!confirm('Reiniciar STREAM2 y desconectar clientes?'))return;msg.textContent='Reiniciando STREAM2...';"
+      "fetch('/video/restart',{method:'POST',credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()})"
+      ".then(()=>{let n=0;let timer=setInterval(()=>fetch('/video/restart/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.busy&&n++<30)return;clearInterval(timer);if(d.result===2){msg.textContent='STREAM2 reiniciado';stream()}else msg.textContent='ERROR reinicio STREAM2 (ver consola)';}).catch(()=>{clearInterval(timer);msg.textContent='ERROR consultando reinicio'}),500)})"
+      ".catch(e=>msg.textContent='ERROR: '+e.message)}"
       "function snapshot(){stop();im.src=u+'/video/snapshot.jpg?t='+Date.now();msg.textContent='Fotografia JPEG';}"
       "function stream(){stop();im.src=u+'/video/stream?t='+Date.now();msg.textContent='Conectando MJPEG...';}"
       "im.onload=()=>{msg.textContent='Imagen recibida';};"
@@ -209,13 +287,15 @@ static esp_err_t video_snapshot(httpd_req_t *r){
 }
 static esp_err_t video_stream(httpd_req_t *r){
     if(!stream2_enabled){httpd_resp_set_status(r,"503 Service Unavailable");httpd_resp_set_type(r,"text/plain");httpd_resp_sendstr(r,"STREAM2 OFF");return ESP_FAIL;}
-    stream_clients++;
+    int fd=httpd_req_to_sockfd(r);
+    if(!stream_client_add(fd)){httpd_resp_set_status(r,"503 Service Unavailable");httpd_resp_set_type(r,"text/plain");httpd_resp_sendstr(r,"Limite de clientes");return ESP_FAIL;}
+    const uint32_t my_epoch=stream_epoch;
     httpd_resp_set_type(r,"multipart/x-mixed-replace;boundary=korvoframe");
     httpd_resp_set_hdr(r,"Cache-Control","no-store");
     uint32_t last=published;
     esp_err_t e=ESP_OK;
     int64_t start=esp_timer_get_time();
-    while(stream2_enabled){
+    while(stream2_enabled && my_epoch==stream_epoch){
         if(published==last){
             vTaskDelay(pdMS_TO_TICKS(80));
             if(esp_timer_get_time()-start>10000000LL){e=ESP_ERR_TIMEOUT;break;}
@@ -231,7 +311,7 @@ static esp_err_t video_stream(httpd_req_t *r){
         xSemaphoreGive(jpg_mutex);
         if(e!=ESP_OK)break;
     }
-    if(stream_clients>0)stream_clients--;
+    stream_client_remove(fd);
     return e;
 }
 static esp_err_t video_ai_control(httpd_req_t *r) {
@@ -253,6 +333,37 @@ static esp_err_t video_ai_control(httpd_req_t *r) {
     httpd_resp_set_hdr(r,"Cache-Control","no-store");
     return httpd_resp_sendstr(r,reply);
 }
+/* DIAG01: lectura de tareas sin manipular afinidades ni scheduler. */
+static esp_err_t taskmanager_json(httpd_req_t *r){
+ if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
+ UBaseType_t count=uxTaskGetNumberOfTasks();
+ if(count>96)count=96;
+ TaskStatus_t *tasks=calloc(count+8,sizeof(TaskStatus_t));
+ if(!tasks){httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"Sin memoria");return ESP_FAIL;}
+ configRUN_TIME_COUNTER_TYPE total=0;
+ UBaseType_t n=uxTaskGetSystemState(tasks,count+8,&total);
+ httpd_resp_set_type(r,"application/json");httpd_resp_set_hdr(r,"Cache-Control","no-store");
+ httpd_resp_send_chunk(r,"{\"tasks\":[",-1);
+ for(UBaseType_t i=0;i<n;i++){
+  char b[280];const char *name=tasks[i].pcTaskName;
+  char safe[configMAX_TASK_NAME_LEN*2+1];size_t j=0;
+  for(size_t k=0;name[k] && j<sizeof(safe)-2;k++){char c=name[k];safe[j++]=(c=='"'||c=='\\'||(unsigned char)c<32)?'_':c;}safe[j]=0;
+  snprintf(b,sizeof(b),"%s{\"name\":\"%s\",\"priority\":%lu,\"stack_free_bytes\":%lu,\"runtime\":%llu,\"state\":%d}",i?",":"",safe,(unsigned long)tasks[i].uxCurrentPriority,(unsigned long)tasks[i].usStackHighWaterMark,(unsigned long long)tasks[i].ulRunTimeCounter,(int)tasks[i].eCurrentState);
+  httpd_resp_send_chunk(r,b,-1);
+ }
+ char tail[128];snprintf(tail,sizeof(tail),"],\"count\":%lu,\"heap_free\":%lu}",(unsigned long)n,(unsigned long)heap_caps_get_free_size(MALLOC_CAP_8BIT));
+ httpd_resp_send_chunk(r,tail,-1);httpd_resp_send_chunk(r,NULL,0);free(tasks);return ESP_OK;
+}
+static esp_err_t taskmanager_page(httpd_req_t *r){
+ if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
+ static const char page[]="<!doctype html><html lang='es'><meta charset='utf-8'><title>KORVO Task Manager</title>"
+ "<style>body{background:#101820;color:#eee;font:14px Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #455;padding:7px;text-align:left}th{color:#8ce0ad}</style>"
+ "<h2>KORVO - TASK MANAGER</h2><p><a href='/video/view' style='color:#8ce0ad'>Volver a VIDEO IP</a></p><p id='info'>Consultando...</p>"
+ "<table><thead><tr><th>Tarea</th><th>Prioridad</th><th>Stack libre (bytes)</th><th>Runtime acumulado</th><th>Estado</th></tr></thead><tbody id='tasks'></tbody></table>"
+ "<p>Runtime acumulado: contador FreeRTOS, NO porcentaje CPU. La afinidad y CPU por tarea requieren validacion adicional.</p>"
+ "<script>function refresh(){fetch('/video/tasks',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(d=>{document.getElementById('info').textContent='Tareas: '+d.count+' | Heap libre: '+d.heap_free+' bytes';let b=document.getElementById('tasks');b.replaceChildren();for(let t of d.tasks){let tr=document.createElement('tr');for(let v of [t.name,t.priority,t.stack_free_bytes,t.runtime,t.state]){let td=document.createElement('td');td.textContent=v;tr.appendChild(td)}b.appendChild(tr)}}).catch(e=>document.getElementById('info').textContent='Error: '+e.message)}refresh();setInterval(refresh,2000)</script></html>";
+ httpd_resp_set_type(r,"text/html; charset=utf-8");return httpd_resp_sendstr(r,page);
+}
 void korvo_video01_register(httpd_handle_t server){
     httpd_uri_t ai={.uri="/video/ai",.method=HTTP_GET,.handler=video_ai_control};
     httpd_register_uri_handler(server,&ai);
@@ -262,6 +373,12 @@ void korvo_video01_register(httpd_handle_t server){
     httpd_uri_t svc={.uri="/video/service",.method=HTTP_POST,.handler=video_service};
     httpd_register_uri_handler(server,&st);httpd_register_uri_handler(server,&vw);httpd_register_uri_handler(server,&co);
     httpd_register_uri_handler(server,&svc);
+    httpd_uri_t reset={.uri="/video/restart",.method=HTTP_POST,.handler=video_restart};
+    httpd_uri_t reset_status={.uri="/video/restart/status",.method=HTTP_GET,.handler=video_restart_status};
+    httpd_uri_t tm={.uri="/video/taskmanager",.method=HTTP_GET,.handler=taskmanager_page};
+    httpd_uri_t tj={.uri="/video/tasks",.method=HTTP_GET,.handler=taskmanager_json};
+    httpd_register_uri_handler(server,&reset);httpd_register_uri_handler(server,&reset_status);
+    httpd_register_uri_handler(server,&tm);httpd_register_uri_handler(server,&tj);
     httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
     cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;
     if(httpd_start(&stream_server,&cfg)==ESP_OK){
