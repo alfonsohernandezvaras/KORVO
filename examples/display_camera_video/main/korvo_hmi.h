@@ -89,3 +89,6 @@ void korvo_hmi_update_gateway_button(bool configured,
 #ifdef __cplusplus
 }
 #endif
+
+/* KORVO_PERF01 */
+void korvo_hmi_perf_frame_mark(int64_t frame_us);

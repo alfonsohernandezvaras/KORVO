@@ -12,6 +12,8 @@
 #include "korvo_network.h"
 #include "korvo_sip.h" /* KORVO_V21_38_SIP_TOP_STATUS */
 #include "freertos/task.h"
+#include "esp_timer.h"
+#include <inttypes.h>
 #include "iot_button.h"
 #include "freertos/portmacro.h"
 
@@ -32,6 +34,70 @@ static lv_obj_t *s_v21_23_sd_keys=NULL;
 static lv_obj_t *s_v21_23_sd_vals=NULL;
 static lv_obj_t *s_gateway_footer = NULL;
 static lv_obj_t *s_video_resolution = NULL;
+/* KORVO_PERF01: estadisticas HMI; frame_us proviene de la tarea de camara. */
+static lv_obj_t *s_perf_bar = NULL;
+static volatile uint32_t s_perf_frames = 0;
+static volatile uint32_t s_perf_interval_us = 0;
+static volatile int64_t s_perf_last_frame_us = 0;
+
+void korvo_hmi_perf_frame_mark(int64_t frame_us)
+{
+    int64_t prev = s_perf_last_frame_us;
+    if (prev > 0 && frame_us > prev) {
+        int64_t d = frame_us - prev;
+        if (d < 1000000) s_perf_interval_us = (uint32_t)d;
+    }
+    s_perf_last_frame_us = frame_us;
+    s_perf_frames++;
+}
+
+static void korvo_perf_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if (!s_perf_bar) return;
+    static uint32_t prev_frames = 0;
+    static int64_t prev_us = 0;
+    static uint32_t prev_idle[2] = {0, 0};
+    static bool sampled = false;
+    int64_t now = esp_timer_get_time();
+    uint32_t frames = s_perf_frames;
+    uint32_t dt = (prev_us && now > prev_us) ? (uint32_t)(now - prev_us) : 0;
+    unsigned fps = dt ? (unsigned)(((uint64_t)(frames - prev_frames) * 1000000ULL + dt/2) / dt) : 0;
+    prev_frames = frames;
+    prev_us = now;
+    unsigned load[2] = {0, 0};
+    bool valid[2] = {false, false};
+#if configGENERATE_RUN_TIME_STATS
+    for (int core = 0; core < 2; ++core) {
+        /* PERF01-R3: read each idle task's accumulated run time separately. */
+        TaskHandle_t idle = xTaskGetIdleTaskHandleForCore(core);
+        if (!idle) continue;
+        TaskStatus_t idle_info = {0};
+        vTaskGetInfo(idle, &idle_info, pdFALSE, eInvalid);
+        uint32_t ticks = (uint32_t)idle_info.ulRunTimeCounter;
+        if (sampled && dt) {
+            uint32_t delta = ticks - prev_idle[core];
+            /* ESP_TIMER proporciona microsegundos; idle <= tiempo real. */
+            uint32_t idle_pct = (uint32_t)((uint64_t)delta * 100ULL / dt);
+            if (idle_pct > 100) idle_pct = 100;
+            load[core] = 100 - idle_pct;
+            valid[core] = true;
+        }
+        prev_idle[core] = ticks;
+    }
+#endif
+    sampled = true;
+    char buf[120];
+    unsigned interval_ms = (unsigned)((s_perf_interval_us + 500U) / 1000U);
+    if (valid[0] && valid[1]) {
+        snprintf(buf, sizeof(buf), "FPS:%u | CPU0:%u%% | CPU1:%u%% | HMI:%ums",
+                 fps, load[0], load[1], interval_ms);
+    } else {
+        snprintf(buf, sizeof(buf), "FPS:%u | CPU0:-- | CPU1:-- | HMI:%ums", fps, interval_ms);
+    }
+    lv_label_set_text(s_perf_bar, buf);
+}
+
 /* KORVO_V19_TOP_VSYNC */
 extern uint32_t bsp_display_get_vsync_count(void);
 extern uint32_t bsp_display_get_dma_count(void);
@@ -673,7 +739,21 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_opa(s_message, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(s_message, 8, 0);
     lv_obj_set_width(s_message, 400);
-    lv_obj_set_pos(s_message, 292, 385); /* V17.6 horizontal only */ /* V17.4 */
+    lv_obj_set_pos(s_message, 292, 411); /* V17.6 horizontal only */ /* V17.4 */
+
+    /* KORVO_PERF01: barra horizontal inmediatamente bajo el video 400x300
+     * (viewport x=292..692, y=80..380). No toca el canvas. */
+    s_perf_bar = lv_label_create(screen);
+    lv_label_set_text(s_perf_bar, "FPS:-- | CPU0:-- | CPU1:-- | HMI:--ms");
+    lv_obj_set_pos(s_perf_bar, 292, 383);
+    lv_obj_set_size(s_perf_bar, 400, 25);
+    lv_obj_set_style_bg_color(s_perf_bar, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_perf_bar, LV_OPA_70, 0);
+    lv_obj_set_style_text_color(s_perf_bar, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_perf_bar, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_pad_top(s_perf_bar, 3, 0);
+    lv_obj_clear_flag(s_perf_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_timer_create(korvo_perf_timer_cb, 1000, NULL);
 
     /* V17 compact layout */
     s_v17_location=lv_label_create(screen); lv_label_set_text(s_v17_location,"IP: -- | HOST: KORVO-01 | SSID: --");

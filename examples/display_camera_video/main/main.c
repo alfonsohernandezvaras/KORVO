@@ -620,6 +620,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     int64_t hmi_now_us = esp_timer_get_time();
     if ((hmi_now_us - hmi_last_us) < 50000LL) return;
     hmi_last_us = hmi_now_us;
+    korvo_hmi_perf_frame_mark(hmi_now_us); /* KORVO_PERF01 */
     /* KORVO_VIDEO17_NATIVE400: VGA fallback o 400x300 real. */
     if (!((camera_buf_hes == 640U && camera_buf_ves == 480U) ||
           (camera_buf_hes == 400U && camera_buf_ves == 300U) ||

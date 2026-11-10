@@ -9,3 +9,4 @@ sdkconfig.old
 *.bak
 *.bak_*
 BACKUP_*/
+examples/display_camera_video/build_PERF01_OLD/
