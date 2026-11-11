@@ -73,6 +73,11 @@ static void stream_close_clients(void){
 static esp_err_t video_stream(httpd_req_t *r);
 static esp_err_t video_snapshot(httpd_req_t *r);
 static bool stream_reset_begin(void);
+/* KORVO_SOCKET01: reset de sesiones HTTP sin destruir/recrear el listener.
+ * httpd_stop/httpd_start necesita sockets libres para su canal interno y
+ * puede fallar con errno=23 (ENFILE) bajo F5 repetido.
+ * El HTTPD conserva el listener y cierra las sesiones al salir el handler.
+ */
 static void stream_restart_task(void *arg){
  (void)arg;
  stream2_enabled=false;
@@ -80,29 +85,29 @@ static void stream_restart_task(void *arg){
  stream_reset_count++;
  snapshot_pending=false;
  stream_close_clients();
- ESP_LOGW(TAG,"CTRL01 RESET epoch=%lu clientes=%lu",(unsigned long)stream_epoch,(unsigned long)stream_clients);
- /* Los handlers deben salir antes de parar HTTPD. */
+ ESP_LOGW(TAG,"SOCKET01 RESET epoch=%lu clientes=%lu",(unsigned long)stream_epoch,(unsigned long)stream_clients);
+ /* El handler debe salir y devolver ESP_FAIL para que HTTPD cierre su fd. */
  for(int i=0;i<50 && stream_clients;i++)vTaskDelay(pdMS_TO_TICKS(100));
  if(stream_clients){
-   ESP_LOGE(TAG,"DIAG01 restart: clientes no liberados (%lu)",(unsigned long)stream_clients);
-   /* Fail safe: never destroy HTTPD while a handler still owns its socket. */
-   stream_restart_result=-1;stream_restart_busy=false;vTaskDelete(NULL);return;
+   ESP_LOGE(TAG,"SOCKET01 RESET ERROR: %lu handler(s) aun activos",(unsigned long)stream_clients);
+   stream_restart_result=-1;
+   stream_restart_busy=false;
+   vTaskDelete(NULL);return;
  }
- if(stream_server){httpd_stop(stream_server);stream_server=NULL;}
+ if(!stream_server){
+   ESP_LOGE(TAG,"SOCKET01 RESET ERROR: listener STREAM2 no disponible; no se recrea a ciegas");
+   stream_restart_result=-1;
+   stream_restart_busy=false;
+   vTaskDelete(NULL);return;
+ }
+ /* Dar oportunidad al HTTPD de liberar el descriptor tras el retorno. */
  vTaskDelay(pdMS_TO_TICKS(250));
- httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
- cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;cfg.core_id=1;cfg.send_wait_timeout=2;
- esp_err_t e=httpd_start(&stream_server,&cfg);
- if(e==ESP_OK){
-   httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
-   httpd_uri_t sn={.uri="/video/snapshot.jpg",.method=HTTP_GET,.handler=video_snapshot};
-   if(httpd_register_uri_handler(stream_server,&ss)!=ESP_OK || httpd_register_uri_handler(stream_server,&sn)!=ESP_OK){
-     httpd_stop(stream_server);stream_server=NULL;e=ESP_FAIL;
-   }
- }
- if(e==ESP_OK){stream_admin_disabled=false;stream2_enabled=true;stream_restart_result=2;ESP_LOGW(TAG,"CTRL01 STREAM2 READY epoch=%lu",(unsigned long)stream_epoch);}
- else {stream_restart_result=-1;ESP_LOGE(TAG,"DIAG01 STREAM2 restart error: %s",esp_err_to_name(e));}
- stream_restart_busy=false;vTaskDelete(NULL);
+ stream_admin_disabled=false;
+ stream2_enabled=true;
+ stream_restart_result=2;
+ ESP_LOGW(TAG,"SOCKET01 STREAM2 READY epoch=%lu (listener conservado)",(unsigned long)stream_epoch);
+ stream_restart_busy=false;
+ vTaskDelete(NULL);
 }
 static bool stream_reset_begin(void){
  bool accepted=false;
@@ -304,7 +309,10 @@ static esp_err_t video_stream(httpd_req_t *r){
         if(e!=ESP_OK)break;
     }
     stream_client_remove(fd);
-    return e;
+    /* SOCKET01: nunca devolver ESP_OK al abandonar el flujo MJPEG.
+     * ESP_FAIL indica a esp_http_server que cierre la sesion TCP.
+     * Esto incluye STOP, RESET y recarga F5 del navegador. */
+    return ESP_FAIL;
 }
 static esp_err_t video_ai_control(httpd_req_t *r) {
     char q[64]={0}, value[8]={0};
