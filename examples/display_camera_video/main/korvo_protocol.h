@@ -17,7 +17,7 @@ extern "C" {
  * El audio continuo NO viaja como palabras de este diccionario.
  */
 
-#define KORVO_PROTOCOL_DICTIONARY_VERSION  2u
+#define KORVO_PROTOCOL_DICTIONARY_VERSION  3u
 
 /*
  * FUENTES DE ESTADO:
@@ -58,7 +58,12 @@ typedef enum {
     KORVO_MSG_WIEGAND_TX       = 0x47,
     KORVO_MSG_WIEGAND_TX_STATUS= 0x48,
     KORVO_MSG_DOOR_RELAY_STATUS= 0x49,
-    KORVO_MSG_BEACON_SET       = 0x4A
+    KORVO_MSG_BEACON_SET       = 0x4A,
+    KORVO_MSG_VIDEO_STREAM_RESET = 0x50,
+    KORVO_MSG_VIDEO_STREAM_RESET_ACK = 0x51,
+    KORVO_MSG_VIDEO_STREAM_SESSION_EXPIRED = 0x52,
+    KORVO_MSG_VIDEO_STREAM_STATUS = 0x53,
+    KORVO_MSG_VIDEO_STREAM_READY = 0x54
 } korvo_message_id_t;
 
 typedef enum {

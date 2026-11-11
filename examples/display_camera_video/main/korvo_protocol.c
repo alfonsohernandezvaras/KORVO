@@ -29,6 +29,11 @@ const char *korvo_protocol_name(korvo_message_id_t id)
     case KORVO_MSG_WIEGAND_TX_STATUS: return "WIEGAND_TX_STATUS";
     case KORVO_MSG_DOOR_RELAY_STATUS: return "DOOR_RELAY_STATUS";
     case KORVO_MSG_BEACON_SET: return "BEACON_SET";
+    case KORVO_MSG_VIDEO_STREAM_RESET: return "VIDEO_STREAM_RESET";
+    case KORVO_MSG_VIDEO_STREAM_RESET_ACK: return "VIDEO_STREAM_RESET_ACK";
+    case KORVO_MSG_VIDEO_STREAM_SESSION_EXPIRED: return "VIDEO_STREAM_SESSION_EXPIRED";
+    case KORVO_MSG_VIDEO_STREAM_STATUS: return "VIDEO_STREAM_STATUS";
+    case KORVO_MSG_VIDEO_STREAM_READY: return "VIDEO_STREAM_READY";
     default:                           return "UNKNOWN";
     }
 }
@@ -40,6 +45,10 @@ korvo_message_direction_t korvo_protocol_direction(korvo_message_id_t id)
     case KORVO_MSG_HEARTBEAT:
         return KORVO_DIR_BIDIRECTIONAL;
 
+    case KORVO_MSG_VIDEO_STREAM_RESET_ACK:
+    case KORVO_MSG_VIDEO_STREAM_SESSION_EXPIRED:
+    case KORVO_MSG_VIDEO_STREAM_STATUS:
+    case KORVO_MSG_VIDEO_STREAM_READY:
     case KORVO_MSG_DOOR_OPEN:
     case KORVO_MSG_AUDIO_START:
     case KORVO_MSG_AUDIO_STOP:
@@ -83,6 +92,11 @@ int korvo_protocol_is_valid(uint8_t id)
     case KORVO_MSG_WIEGAND_TX_STATUS:
     case KORVO_MSG_DOOR_RELAY_STATUS:
     case KORVO_MSG_BEACON_SET:
+    case KORVO_MSG_VIDEO_STREAM_RESET:
+    case KORVO_MSG_VIDEO_STREAM_RESET_ACK:
+    case KORVO_MSG_VIDEO_STREAM_SESSION_EXPIRED:
+    case KORVO_MSG_VIDEO_STREAM_STATUS:
+    case KORVO_MSG_VIDEO_STREAM_READY:
         return 1;
     default:
         return 0;

@@ -1,6 +1,7 @@
 #include "korvo_gateway.h"
 #include "korvo_network.h"
 #include "korvo_protocol.h"
+#include "korvo_video01.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -690,6 +691,16 @@ static void handle_ws_json(const char *text)
         s_gateway_reported_control = reported;
         recompute_locked();
         unlock();
+    } else if (!strcmp(type,"cmd") && !strcmp(name,"video.stream.reset")) {
+        bool authorized=false;
+        lock();
+        authorized=s_status.websocket_connected && s_status.pair_auth_ok &&
+                   s_status.dictionary_state==KORVO_DICT_OK;
+        unlock();
+        if(authorized){
+            bool accepted=korvo_video01_admin_reset();
+            ESP_LOGW(TAG,"CTRL01 Gateway video.stream.reset accepted=%d",accepted);
+        } else ESP_LOGW(TAG,"CTRL01 Gateway video.stream.reset RECHAZADO: pairing/dictionary");
     } else if (!strcmp(type, "status") && !strcmp(name, "sys.status")) {
         cJSON *sip = cJSON_IsObject(data) ? cJSON_GetObjectItemCaseSensitive(data, "sip") : NULL;
         cJSON *registered = cJSON_IsObject(sip) ? cJSON_GetObjectItemCaseSensitive(sip, "registered") : NULL;
