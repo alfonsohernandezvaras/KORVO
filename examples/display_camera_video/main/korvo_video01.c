@@ -51,16 +51,16 @@ static volatile uint32_t stream_reset_count=0;
 static volatile bool stream_restart_busy=false;
 static volatile int stream_restart_result=0; /* 0 idle,1 ejecutando,2 OK,-1 error */
 static portMUX_TYPE stream_lock=portMUX_INITIALIZER_UNLOCKED;
-static int stream_fds[4]={-1,-1,-1,-1};
+static int stream_fds[2]={-1,-1};
 static bool stream_client_add(int fd){
  bool ok=false;
  portENTER_CRITICAL(&stream_lock);
- for(int i=0;i<4;i++)if(stream_fds[i]==-1){stream_fds[i]=fd;stream_clients++;ok=true;break;}
+ for(int i=0;i<2;i++)if(stream_fds[i]==-1){stream_fds[i]=fd;stream_clients++;ok=true;break;}
  portEXIT_CRITICAL(&stream_lock);return ok;
 }
 static void stream_client_remove(int fd){
  portENTER_CRITICAL(&stream_lock);
- for(int i=0;i<4;i++)if(stream_fds[i]==fd){stream_fds[i]=-1;if(stream_clients)stream_clients--;break;}
+ for(int i=0;i<2;i++)if(stream_fds[i]==fd){stream_fds[i]=-1;if(stream_clients)stream_clients--;break;}
  portEXIT_CRITICAL(&stream_lock);
 }
 /* DICCIONARIO-STREAM01: comandos locales, NO alteran V3 Gateway. */
@@ -71,8 +71,8 @@ static bool korvo_admin(httpd_req_t *r){
  char cookie[256]={0};return httpd_req_get_hdr_value_str(r,"Cookie",cookie,sizeof(cookie))==ESP_OK && strstr(cookie,"KORVO_SESSION=korvo_admin")!=NULL;
 }
 static void stream_close_clients(void){
- int fds[4];portENTER_CRITICAL(&stream_lock);
- for(int i=0;i<4;i++)fds[i]=stream_fds[i];
+ int fds[2];portENTER_CRITICAL(&stream_lock);
+ for(int i=0;i<2;i++)fds[i]=stream_fds[i];
  portEXIT_CRITICAL(&stream_lock);
  for(int i=0;i<4;i++)if(fds[i]>=0){
    shutdown(fds[i],SHUT_RDWR);
@@ -421,12 +421,15 @@ static void spv_addr(const struct sockaddr_storage *ss, char *dst, size_t cap)
         char ip[48] = {0};
         if (inet_ntop(AF_INET, &p->sin_addr, ip, sizeof(ip)))
             snprintf(dst, cap, "%s:%u", ip, (unsigned)ntohs(p->sin_port));
-    } else if (ss->ss_family == AF_INET6) {
+    }
+#if CONFIG_LWIP_IPV6
+    else if (ss->ss_family == AF_INET6) {
         const struct sockaddr_in6 *p = (const struct sockaddr_in6 *)ss;
         char ip[64] = {0};
         if (inet_ntop(AF_INET6, &p->sin6_addr, ip, sizeof(ip)))
             snprintf(dst, cap, "[%s]:%u", ip, (unsigned)ntohs(p->sin6_port));
     }
+#endif
     if (!dst[0]) snprintf(dst, cap, "-");
 }
 static esp_err_t spv_data(httpd_req_t *r)
