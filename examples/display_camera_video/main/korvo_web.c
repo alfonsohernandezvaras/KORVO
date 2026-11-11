@@ -1879,12 +1879,15 @@ static esp_err_t gateway_g(httpd_req_t *r)
         "<button type=button title='Activar IA' aria-label='Activar IA' onclick='gwAI(1)'>IA+</button>"
         "<button type=button title='Desactivar IA' aria-label='Desactivar IA' onclick='gwAI(0)'>IA-</button>"
         "<button type=button title='Ampliar video' aria-label='Ampliar video' onclick='gwFull()'>&#9974;</button>"
+        "<button type=button title='Socket Process View' aria-label='Socket Process View' onclick='socketProcessView01()'>NET</button>"
         "</div><p class=small>240 x 180 | 10 FPS objetivo | ON-DEMAND</p><p id=gw_ai_state class=small>IA: --</p>"
+        "<p id=gw_socket_diag class=small>SOCKETS TCP/IP | USADOS: -- | LIBRES: -- | TOTAL: -- | MJPEG: --</p>"
         "</div>"
         "<div class='card gw_diag'><h2>Diagnostico STREAM2</h2><div id=gw_diag_content class=grid><div>Consultando...</div></div></div></div>"
         "<script>"
         "const gwIm=()=>document.getElementById('gw_mjpeg'),gwMsg=()=>document.getElementById('gw_video_state');"
         "var gwEpoch=null,gwWatching=false,gwExpired=false;"
+        "function socketProcessView01(){window.open('/video/socket-process','_blank','noopener');}"
         "function gwVideoStop(){gwWatching=false;gwIm().removeAttribute('src');gwMsg().textContent='Detenido - CPU liberada';}"
         "function gwEpochPoll(){fetch('/video/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{"
         "if(gwEpoch!==null&&d.session_epoch!==gwEpoch&&gwWatching){gwIm().removeAttribute('src');gwWatching=false;gwExpired=true;gwMsg().textContent='SESION CADUCADA - STREAM2 reiniciado por administrador. Pulse START para reconectar.';}"
@@ -1897,8 +1900,9 @@ static esp_err_t gateway_g(httpd_req_t *r)
         "function gwAI(v){fetch('/video/ai?enabled='+v,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(()=>gwAIRefresh()).catch(e=>document.getElementById('gw_ai_state').textContent='IA ERROR: '+e.message);}"
         "function gwAIRefresh(){fetch('/video/ai',{cache:'no-store'}).then(r=>r.json()).then(d=>document.getElementById('gw_ai_state').textContent='IA ESP-DL: '+(d.esp_dl_enabled?'ON':'OFF')).catch(()=>{});}"
         "function gwRestart(){gwVideoStop();if(!confirm('Reiniciar STREAM2 y desconectar clientes?'))return;gwMsg().textContent='Reiniciando STREAM2...';fetch('/video/restart',{method:'POST',credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(()=>{let n=0;let t=setInterval(()=>fetch('/video/restart/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.busy&&n++<30)return;clearInterval(t);if(d.result===2){gwMsg().textContent='STREAM2 reiniciado - SESION CADUCADA. Pulse START para reconectar.'}else gwMsg().textContent='ERROR reinicio STREAM2';}).catch(()=>{clearInterval(t);gwMsg().textContent='ERROR consultando reinicio'}),500)}).catch(e=>gwMsg().textContent='ERROR: '+e.message);}"
+        "function gwSocketDiag(){fetch('/video/sockets',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(d=>{let fmt=v=>v===null||v===undefined?'N/D':v;document.getElementById('gw_socket_diag').textContent='SOCKETS TCP/IP | USADOS: '+fmt(d.used)+' | LIBRES: '+fmt(d.free)+' | TOTAL: '+fmt(d.total)+' | MJPEG: '+fmt(d.mjpeg_clients);}).catch(()=>{document.getElementById('gw_socket_diag').textContent='SOCKETS TCP/IP: SIN RESPUESTA';});}"
         "function gwDiag(){fetch('/video/status',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(d=>{let x=document.getElementById('gw_diag_content');x.replaceChildren();Object.keys(d).forEach(k=>{let a=document.createElement('div'),b=document.createElement('div');a.textContent=k;b.textContent=String(d[k]);if(d[k]===true||d[k]==='OK')b.className='ok';if(d[k]===false||d[k]==='DOWN')b.className='bad';x.append(a,b)})}).catch(()=>{document.getElementById('gw_diag_content').textContent='Diagnostico no disponible'})}"
-        "gwIm().onload=()=>gwMsg().textContent='Imagen recibida';gwIm().onerror=()=>gwMsg().textContent='VIDEO DOWN';gwDiag();gwAIRefresh();setInterval(gwDiag,2000);setInterval(gwAIRefresh,4000);"
+        "gwIm().onload=()=>gwMsg().textContent='Imagen recibida';gwIm().onerror=()=>gwMsg().textContent='VIDEO DOWN';gwDiag();gwAIRefresh();setInterval(gwDiag,2000);gwSocketDiag();setInterval(gwSocketDiag,2000);setInterval(gwAIRefresh,4000);"
         "</script>",
 
         gw.local.name, gw.local.hostname, gw.local.location,

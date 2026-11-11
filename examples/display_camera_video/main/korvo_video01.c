@@ -15,7 +15,12 @@
 #include "freertos/semphr.h"
 #include "freertos/idf_additions.h"
 #include "lwip/sockets.h"
+/* SOCKET_DIAG01: diagnostico pasivo de descriptores lwIP. */
+#include "sdkconfig.h"
+#include "lwip/opt.h"
+
 #include "esp_err.h"
+#include "korvo_protocol.h"
 #include <inttypes.h>
 #include <stdlib.h>
 
@@ -58,6 +63,10 @@ static void stream_client_remove(int fd){
  for(int i=0;i<4;i++)if(stream_fds[i]==fd){stream_fds[i]=-1;if(stream_clients)stream_clients--;break;}
  portEXIT_CRITICAL(&stream_lock);
 }
+/* DICCIONARIO-STREAM01: comandos locales, NO alteran V3 Gateway. */
+typedef enum { STREAM_CMD_ENABLE=0xE0, STREAM_CMD_DISABLE=0xE1,
+               STREAM_CMD_RESET=KORVO_MSG_VIDEO_STREAM_RESET } stream_cmd_t;
+static bool stream_dispatch(stream_cmd_t cmd);
 static bool korvo_admin(httpd_req_t *r){
  char cookie[256]={0};return httpd_req_get_hdr_value_str(r,"Cookie",cookie,sizeof(cookie))==ESP_OK && strstr(cookie,"KORVO_SESSION=korvo_admin")!=NULL;
 }
@@ -80,32 +89,23 @@ static bool stream_reset_begin(void);
  */
 static void stream_restart_task(void *arg){
  (void)arg;
+ /* SOCKET02: logical reset, keep HTTPD and its control socket alive. */
  stream2_enabled=false;
  stream_epoch++;
  stream_reset_count++;
  snapshot_pending=false;
  stream_close_clients();
- ESP_LOGW(TAG,"SOCKET01 RESET epoch=%lu clientes=%lu",(unsigned long)stream_epoch,(unsigned long)stream_clients);
- /* El handler debe salir y devolver ESP_FAIL para que HTTPD cierre su fd. */
+ ESP_LOGW(TAG,"SOCKET02 RESET epoch=%lu clients=%lu",(unsigned long)stream_epoch,(unsigned long)stream_clients);
  for(int i=0;i<50 && stream_clients;i++)vTaskDelay(pdMS_TO_TICKS(100));
  if(stream_clients){
-   ESP_LOGE(TAG,"SOCKET01 RESET ERROR: %lu handler(s) aun activos",(unsigned long)stream_clients);
+   ESP_LOGE(TAG,"SOCKET02 reset: clientes retenidos=%lu",(unsigned long)stream_clients);
    stream_restart_result=-1;
-   stream_restart_busy=false;
-   vTaskDelete(NULL);return;
+ }else{
+   stream_admin_disabled=false;
+   stream2_enabled=true;
+   stream_restart_result=2;
+   ESP_LOGW(TAG,"SOCKET02 STREAM2 READY epoch=%lu",(unsigned long)stream_epoch);
  }
- if(!stream_server){
-   ESP_LOGE(TAG,"SOCKET01 RESET ERROR: listener STREAM2 no disponible; no se recrea a ciegas");
-   stream_restart_result=-1;
-   stream_restart_busy=false;
-   vTaskDelete(NULL);return;
- }
- /* Dar oportunidad al HTTPD de liberar el descriptor tras el retorno. */
- vTaskDelay(pdMS_TO_TICKS(250));
- stream_admin_disabled=false;
- stream2_enabled=true;
- stream_restart_result=2;
- ESP_LOGW(TAG,"SOCKET01 STREAM2 READY epoch=%lu (listener conservado)",(unsigned long)stream_epoch);
  stream_restart_busy=false;
  vTaskDelete(NULL);
 }
@@ -120,11 +120,24 @@ static bool stream_reset_begin(void){
  }
  return true;
 }
-bool korvo_video01_admin_reset(void){return stream_reset_begin();}
+static bool stream_dispatch(stream_cmd_t cmd){
+ switch(cmd){
+ case STREAM_CMD_RESET: return stream_reset_begin();
+ case STREAM_CMD_ENABLE:
+   if(stream_restart_busy)return false;
+   stream_admin_disabled=false;stream2_enabled=true;return true;
+ case STREAM_CMD_DISABLE:
+   if(stream_restart_busy)return false;
+   stream_admin_disabled=true;stream2_enabled=false;stream_epoch++;
+   snapshot_pending=false;stream_close_clients();return true;
+ default: return false;
+ }
+}
+bool korvo_video01_admin_reset(void){return stream_dispatch(STREAM_CMD_RESET);}
 static esp_err_t video_restart(httpd_req_t *r){
  if(!korvo_admin(r)){httpd_resp_send_err(r,HTTPD_401_UNAUTHORIZED,"Inicie sesion");return ESP_FAIL;}
  if(stream_restart_busy){httpd_resp_set_status(r,"409 Conflict");return httpd_resp_sendstr(r,"{\"error\":\"reinicio en curso\"}");}
- if(!stream_reset_begin()){httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"No se pudo iniciar reset");return ESP_FAIL;}
+ if(!stream_dispatch(STREAM_CMD_RESET)){httpd_resp_send_err(r,HTTPD_500_INTERNAL_SERVER_ERROR,"No se pudo iniciar reset");return ESP_FAIL;}
  httpd_resp_set_type(r,"application/json");return httpd_resp_sendstr(r,"{\"started\":true}");
 }
 static esp_err_t video_restart_status(httpd_req_t *r){
@@ -244,9 +257,9 @@ static esp_err_t video_service(httpd_req_t *r){
         httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"enabled=0 o 1");return ESP_FAIL;
     }
     if(stream_restart_busy){httpd_resp_set_status(r,"409 Conflict");return httpd_resp_sendstr(r,"{\"error\":\"reinicio en curso\"}");}
-    stream_admin_disabled=(v[0]=='0');
-    stream2_enabled=!stream_admin_disabled;
-    if(!stream2_enabled){stream_epoch++;snapshot_pending=false;stream_close_clients();}
+    if(!stream_dispatch(v[0]=='1'?STREAM_CMD_ENABLE:STREAM_CMD_DISABLE)){
+        httpd_resp_set_status(r,"409 Conflict");return httpd_resp_sendstr(r,"STREAM2 ocupado");
+    }
     ESP_LOGW(TAG,"STREAM2 diagnostico: %s",stream2_enabled?"ON":"OFF");
     httpd_resp_set_type(r,"application/json");
     httpd_resp_set_hdr(r,"Cache-Control","no-store");
@@ -282,37 +295,63 @@ static esp_err_t video_snapshot(httpd_req_t *r){
     httpd_resp_set_type(r,"image/jpeg");httpd_resp_set_hdr(r,"Cache-Control","no-store");
     esp_err_t e=httpd_resp_send(r,(const char*)jpeg_frame,jpeg_len);xSemaphoreGive(jpg_mutex);return e;
 }
+/* SOCKET02_ASYNC: each MJPEG response runs outside HTTPD accept loop. */
+typedef struct {httpd_req_t *req; int fd; uint32_t epoch;} stream_session_t;
+static void stream_async_worker(void *arg){
+ stream_session_t *session=(stream_session_t*)arg;
+ httpd_req_t *r=session->req;
+ const int fd=session->fd;
+ const uint32_t my_epoch=session->epoch;
+ uint32_t last=published;
+ esp_err_t e=ESP_OK;
+ int64_t last_frame=esp_timer_get_time();
+ while(stream2_enabled && my_epoch==stream_epoch){
+   if(published==last){
+     vTaskDelay(pdMS_TO_TICKS(80));
+     if(esp_timer_get_time()-last_frame>10000000LL){e=ESP_ERR_TIMEOUT;break;}
+     continue;
+   }
+   last_frame=esp_timer_get_time();
+   if(!jpg_mutex||xSemaphoreTake(jpg_mutex,pdMS_TO_TICKS(100))!=pdTRUE)continue;
+   size_t n=jpeg_len;last=published;
+   char header[110];
+   int z=snprintf(header,sizeof(header),"\r\n--korvoframe\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",(unsigned)n);
+   e=httpd_resp_send_chunk(r,header,z);
+   if(e==ESP_OK)e=httpd_resp_send_chunk(r,(const char*)jpeg_frame,n);
+   xSemaphoreGive(jpg_mutex);
+   if(e!=ESP_OK)break;
+ }
+ /* Complete async request to release HTTPD-owned socket/session. */
+ stream_client_remove(fd);
+ httpd_req_async_handler_complete(r);
+ ESP_LOGI(TAG,"SOCKET02 MJPEG close fd=%d epoch=%lu err=%s",fd,(unsigned long)my_epoch,esp_err_to_name(e));
+ free(session);
+ vTaskDelete(NULL);
+}
 static esp_err_t video_stream(httpd_req_t *r){
-    if(!stream2_enabled){httpd_resp_set_status(r,"503 Service Unavailable");httpd_resp_set_type(r,"text/plain");httpd_resp_sendstr(r,"STREAM2 OFF");return ESP_FAIL;}
-    int fd=httpd_req_to_sockfd(r);
-    if(!stream_client_add(fd)){httpd_resp_set_status(r,"503 Service Unavailable");httpd_resp_set_type(r,"text/plain");httpd_resp_sendstr(r,"Limite de clientes");return ESP_FAIL;}
-    const uint32_t my_epoch=stream_epoch;
-    httpd_resp_set_type(r,"multipart/x-mixed-replace;boundary=korvoframe");
-    httpd_resp_set_hdr(r,"Cache-Control","no-store");
-    uint32_t last=published;
-    esp_err_t e=ESP_OK;
-    int64_t start=esp_timer_get_time();
-    while(stream2_enabled && my_epoch==stream_epoch){
-        if(published==last){
-            vTaskDelay(pdMS_TO_TICKS(80));
-            if(esp_timer_get_time()-start>10000000LL){e=ESP_ERR_TIMEOUT;break;}
-            continue;
-        }
-        start=esp_timer_get_time();
-        if(!jpg_mutex||xSemaphoreTake(jpg_mutex,pdMS_TO_TICKS(100))!=pdTRUE)continue;
-        size_t n=jpeg_len;last=published;
-        char header[110];
-        int z=snprintf(header,sizeof(header),"\r\n--korvoframe\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",(unsigned)n);
-        e=httpd_resp_send_chunk(r,header,z);
-        if(e==ESP_OK)e=httpd_resp_send_chunk(r,(const char*)jpeg_frame,n);
-        xSemaphoreGive(jpg_mutex);
-        if(e!=ESP_OK)break;
-    }
-    stream_client_remove(fd);
-    /* SOCKET01: nunca devolver ESP_OK al abandonar el flujo MJPEG.
-     * ESP_FAIL indica a esp_http_server que cierre la sesion TCP.
-     * Esto incluye STOP, RESET y recarga F5 del navegador. */
-    return ESP_FAIL;
+ if(!stream2_enabled || stream_restart_busy){
+   httpd_resp_set_status(r,"503 Service Unavailable");
+   return httpd_resp_sendstr(r,"STREAM2 OFF");
+ }
+ /* Reserve a slot before transferring ownership to async worker. */
+ int fd=httpd_req_to_sockfd(r);
+ if(!stream_client_add(fd)){
+   httpd_resp_set_status(r,"503 Service Unavailable");
+   return httpd_resp_sendstr(r,"Limite de clientes MJPEG");
+ }
+ httpd_req_t *async_req=NULL;
+ esp_err_t e=httpd_req_async_handler_begin(r,&async_req);
+ if(e!=ESP_OK){stream_client_remove(fd);return e;}
+ stream_session_t *session=calloc(1,sizeof(*session));
+ if(!session){stream_client_remove(fd);httpd_req_async_handler_complete(async_req);return ESP_OK;}
+ session->req=async_req;session->fd=fd;session->epoch=stream_epoch;
+ httpd_resp_set_type(async_req,"multipart/x-mixed-replace;boundary=korvoframe");
+ httpd_resp_set_hdr(async_req,"Cache-Control","no-store");
+ if(xTaskCreatePinnedToCore(stream_async_worker,"mjpeg_client",6144,session,4,NULL,1)!=pdPASS){
+   free(session);stream_client_remove(fd);httpd_req_async_handler_complete(async_req);return ESP_OK;
+ }
+ ESP_LOGI(TAG,"SOCKET02 MJPEG open fd=%d clients=%lu",fd,(unsigned long)stream_clients);
+ return ESP_OK;
 }
 static esp_err_t video_ai_control(httpd_req_t *r) {
     char q[64]={0}, value[8]={0};
@@ -333,20 +372,140 @@ static esp_err_t video_ai_control(httpd_req_t *r) {
     httpd_resp_set_hdr(r,"Cache-Control","no-store");
     return httpd_resp_sendstr(r,reply);
 }
+/* SOCKET_DIAG01: recuento de sockets lwIP mediante SO_TYPE, sin abrir conexiones
+ * adicionales para medir. CONFIG_LWIP_MAX_SOCKETS es el limite configurado,
+ * no un diagnostico de todos los recursos internos TCP/IP. */
+static esp_err_t socket_diag01(httpd_req_t *r){
+    unsigned used=0;
+#ifdef CONFIG_LWIP_MAX_SOCKETS
+    const unsigned total=(unsigned)CONFIG_LWIP_MAX_SOCKETS;
+#else
+    const unsigned total=0;
+#endif
+#if defined(LWIP_SOCKET_OFFSET)
+    const int offset=LWIP_SOCKET_OFFSET;
+#else
+    const int offset=0;
+#endif
+    for(unsigned i=0;i<total;i++){
+        int fd=offset+(int)i;
+        int type=0;
+        socklen_t len=sizeof(type);
+        if(getsockopt(fd,SOL_SOCKET,SO_TYPE,&type,&len)==0)used++;
+    }
+    char response[200];
+    if(total){
+        snprintf(response,sizeof(response),
+          "{\"used\":%u,\"free\":%u,\"total\":%u,\"mjpeg_clients\":%lu}",
+          used,used<=total?total-used:0,total,(unsigned long)stream_clients);
+    }else{
+        snprintf(response,sizeof(response),
+          "{\"used\":null,\"free\":null,\"total\":null,\"mjpeg_clients\":%lu}",
+          (unsigned long)stream_clients);
+    }
+    httpd_resp_set_type(r,"application/json");
+    httpd_resp_set_hdr(r,"Cache-Control","no-store");
+    return httpd_resp_sendstr(r,response);
+}
+
+/* SOCKET_PROCESS_VIEW01 */
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
+#include <errno.h>
+
+static void spv_addr(const struct sockaddr_storage *ss, char *dst, size_t cap)
+{
+    dst[0] = 0;
+    if (ss->ss_family == AF_INET) {
+        const struct sockaddr_in *p = (const struct sockaddr_in *)ss;
+        char ip[48] = {0};
+        if (inet_ntop(AF_INET, &p->sin_addr, ip, sizeof(ip)))
+            snprintf(dst, cap, "%s:%u", ip, (unsigned)ntohs(p->sin_port));
+    } else if (ss->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *p = (const struct sockaddr_in6 *)ss;
+        char ip[64] = {0};
+        if (inet_ntop(AF_INET6, &p->sin6_addr, ip, sizeof(ip)))
+            snprintf(dst, cap, "[%s]:%u", ip, (unsigned)ntohs(p->sin6_port));
+    }
+    if (!dst[0]) snprintf(dst, cap, "-");
+}
+static esp_err_t spv_data(httpd_req_t *r)
+{
+    /* Enumeracion de descriptores mediante SO_TYPE. No crea ni cierra sockets.
+       No confundir fd validos con limite de sockets lwIP. */
+    httpd_resp_set_type(r, "application/json");
+    httpd_resp_set_hdr(r, "Cache-Control", "no-store");
+    esp_err_t e = httpd_resp_send_chunk(r, "{\"method\":\"getsockopt(SO_TYPE)\",\"range\":128,\"connections\":[", HTTPD_RESP_USE_STRLEN);
+    if (e != ESP_OK) return e;
+    int count = 0;
+    for (int fd = 0; fd < 128; ++fd) {
+        int type = 0;
+        socklen_t n = sizeof(type);
+        if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &n) != 0) continue;
+        struct sockaddr_storage loc = {0}, peer = {0};
+        socklen_t ln = sizeof(loc), pn = sizeof(peer);
+        char local[96] = "-", remote[96] = "-";
+        if (getsockname(fd, (struct sockaddr *)&loc, &ln) == 0) spv_addr(&loc, local, sizeof(local));
+        if (getpeername(fd, (struct sockaddr *)&peer, &pn) == 0) spv_addr(&peer, remote, sizeof(remote));
+        char row[350];
+        snprintf(row, sizeof(row), "%s{\"fd\":%d,\"type\":\"%s\",\"local\":\"%s\",\"remote\":\"%s\"}",
+                 count ? "," : "", fd, type == SOCK_STREAM ? "TCP" : type == SOCK_DGRAM ? "UDP" : "OTRO", local, remote);
+        e = httpd_resp_send_chunk(r, row, HTTPD_RESP_USE_STRLEN);
+        if (e != ESP_OK) return e;
+        count++;
+    }
+    char tail[110];
+    snprintf(tail, sizeof(tail), "],\"enumerated\":%d,\"mjpeg_clients\":%lu}", count, (unsigned long)stream_clients);
+    e = httpd_resp_send_chunk(r, tail, HTTPD_RESP_USE_STRLEN);
+    if (e != ESP_OK) return e;
+    return httpd_resp_send_chunk(r, NULL, 0);
+}
+static esp_err_t spv_page(httpd_req_t *r)
+{
+    httpd_resp_set_type(r, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(r, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(r,
+        "<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>KORVO SOCKET PROCESS VIEW</title><style>body{font:14px Arial;background:#111820;color:#dce7f2;margin:22px}"
+        "table{border-collapse:collapse;width:100%;margin:10px 0}td,th{border-bottom:1px solid #35414d;padding:8px;text-align:left}"
+        "th{color:#8fc7ee}code,pre{white-space:pre-wrap;overflow-wrap:anywhere}h2{color:#9cd0fa}"
+        "button{padding:8px;margin:4px;background:#25384b;color:white;border:1px solid #6386a0;cursor:pointer}</style></head><body>"
+        "<h2>SOCKET PROCESS VIEW - KORVO</h2><p>Enumeracion real: getsockopt(SO_TYPE), lectura pasiva."
+        " No identifica el proceso propietario ni todos los estados TCP. La muestra incluye el socket HTTP de esta consulta.</p>"
+        "<button onclick='update()'>Actualizar</button><button onclick='window.close()'>Cerrar</button>"
+        "<div id='sum'>Consultando...</div><table><thead><tr><th>FD</th><th>Tipo</th><th>Local</th><th>Remoto</th></tr></thead>"
+        "<tbody id='rows'></tbody></table><h3>Contador anterior SOCKET-DIAG01 (calculado)</h3><pre id='old'>--</pre>"
+        "<p id='err'></p><script>let busy=false;async function update(){if(busy)return;busy=true;try{"
+        "let [a,b]=await Promise.all([fetch('/video/socket-process-data',{cache:'no-store'}),fetch('/video/sockets',{cache:'no-store'})]);"
+        "if(!a.ok)throw Error('HTTP '+a.status);let d=await a.json();"
+        "document.getElementById('sum').textContent='FD verificables: '+d.enumerated+' | Clientes MJPEG: '+d.mjpeg_clients+' | Rango probado: 0..127';"
+        "let t=document.getElementById('rows');t.replaceChildren();for(let x of d.connections){let tr=document.createElement('tr');"
+        "for(let v of [x.fd,x.type,x.local,x.remote]){let td=document.createElement('td');td.textContent=String(v);tr.appendChild(td)}t.appendChild(tr)}"
+        "document.getElementById('old').textContent=b.ok?JSON.stringify(await b.json(),null,2):'HTTP '+b.status;"
+        "document.getElementById('err').textContent='';}catch(e){document.getElementById('err').textContent='ERROR: '+e.message}finally{busy=false}}"
+        "update();setInterval(update,2000)</script></body></html>");
+}
+
 void korvo_video01_register(httpd_handle_t server){
+    httpd_uri_t spv={.uri="/video/socket-process",.method=HTTP_GET,.handler=spv_page};
+    httpd_uri_t spvd={.uri="/video/socket-process-data",.method=HTTP_GET,.handler=spv_data};
+    httpd_register_uri_handler(server,&spv);
+    httpd_register_uri_handler(server,&spvd);
     httpd_uri_t ai={.uri="/video/ai",.method=HTTP_GET,.handler=video_ai_control};
     httpd_register_uri_handler(server,&ai);
     httpd_uri_t st={.uri="/video/status",.method=HTTP_GET,.handler=video_status};
     httpd_uri_t vw={.uri="/video/view",.method=HTTP_GET,.handler=video_view};
     httpd_uri_t co={.uri="/video/color",.method=HTTP_GET,.handler=video_color};
     httpd_uri_t svc={.uri="/video/service",.method=HTTP_POST,.handler=video_service};
-    httpd_register_uri_handler(server,&st);httpd_register_uri_handler(server,&vw);httpd_register_uri_handler(server,&co);
+    httpd_register_uri_handler(server,&st);
+    httpd_uri_t sd01={.uri="/video/sockets",.method=HTTP_GET,.handler=socket_diag01};
+    httpd_register_uri_handler(server,&sd01);httpd_register_uri_handler(server,&vw);httpd_register_uri_handler(server,&co);
     httpd_register_uri_handler(server,&svc);
     httpd_uri_t reset={.uri="/video/restart",.method=HTTP_POST,.handler=video_restart};
     httpd_uri_t reset_status={.uri="/video/restart/status",.method=HTTP_GET,.handler=video_restart_status};
     httpd_register_uri_handler(server,&reset);httpd_register_uri_handler(server,&reset_status);
     httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
-    cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=3;cfg.core_id=1;cfg.send_wait_timeout=2;
+    cfg.server_port=8081;cfg.ctrl_port=32769;cfg.stack_size=8192;cfg.max_open_sockets=5;cfg.core_id=1;cfg.send_wait_timeout=2;cfg.lru_purge_enable=false;
     if(httpd_start(&stream_server,&cfg)==ESP_OK){
         httpd_uri_t ss={.uri="/video/stream",.method=HTTP_GET,.handler=video_stream};
         httpd_uri_t sn={.uri="/video/snapshot.jpg",.method=HTTP_GET,.handler=video_snapshot};
