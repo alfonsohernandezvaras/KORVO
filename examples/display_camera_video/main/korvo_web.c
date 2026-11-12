@@ -148,8 +148,8 @@ static const char *STYLE =
 
     ".fill{height:100%;background:#74d680;width:0}"
 
-    ".wrap:has(.web01_home){max-width:1120px}.web01_home{display:grid;grid-template-columns:repeat(2,max-content);gap:10px;justify-content:start;align-items:start}"
-    ".web01_home>.card{margin:0;width:max-content;max-width:100%;min-width:350px}.web01_home .grid{grid-template-columns:165px minmax(140px,max-content)}"
+    ".wrap:has(.web01_home){max-width:none;margin-left:12px;margin-right:auto}.web01_home{display:grid;grid-template-columns:repeat(3,minmax(0,360px));gap:10px;justify-content:start;align-items:start}"
+    ".web01_home>.card{margin:0;width:auto;max-width:100%;min-width:0}.web01_home .grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ica_cfg_btn{display:inline-block;background:#24618d;color:#fff!important;padding:10px 14px;border:1px solid #66b5eb;border-radius:6px;text-decoration:none;font-weight:bold}.ica_cfg_btn:hover{background:#327ba9}"
     ".wrap:has(.web01_network){max-width:800px;margin-left:12px;margin-right:auto}.web01_network{width:min(100%,620px)}"
     ".web01_network .formgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.web01_network>.card{margin-bottom:9px}"
     ".wrap:has(.web01_gateway){max-width:1160px}.web01_gateway{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(260px,.95fr);gap:10px;align-items:stretch}"
@@ -163,7 +163,11 @@ static const char *STYLE =
     ".wrap:has(.web01_firmware){max-width:900px}.web01_firmware{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}"
     ".web01_firmware>.card{margin:0;min-width:0}.web01_firmware input[type=file]{width:100%}"
     "@media(max-width:900px){.web01_gateway{grid-template-columns:repeat(2,minmax(0,1fr))}.web01_gateway .gw_diag{grid-column:1/-1;grid-row:3}}"
-    "@media(max-width:650px){.web01_home,.web01_gateway,.web01_firmware{grid-template-columns:1fr}.web01_home>.card{width:100%;min-width:0}.web01_gateway>.card{grid-column:1!important;grid-row:auto!important}.web01_network{width:100%}.web01_network .formgrid{grid-template-columns:1fr}}"
+    "@media(min-width:651px) and (max-width:1050px){.web01_home{grid-template-columns:1fr 1fr}}@media(max-width:650px){.web01_home,.web01_gateway,.web01_firmware{grid-template-columns:1fr}.web01_home>.card{width:100%;min-width:0}.web01_gateway>.card{grid-column:1!important;grid-row:auto!important}.web01_network{width:100%}.web01_network .formgrid{grid-template-columns:1fr}}"
+    ".wrap:has(.web01_gateway){max-width:none;margin-left:8px;margin-right:auto}.web01_gateway{grid-template-columns:repeat(3,380px);justify-content:start;align-items:start}.web01_gateway>.card{width:380px;max-width:100%;box-sizing:border-box}.web01_gateway .gw_identity .formgrid{display:block}.web01_gateway .gw_identity .field{display:grid;grid-template-columns:95px minmax(0,1fr);gap:7px;align-items:center;margin-bottom:8px}.web01_gateway .gw_identity .field label{margin:0}.web01_gateway .gw_identity .field input{min-width:0;width:100%;box-sizing:border-box}.web01_gateway .gw_video{text-align:left;overflow:hidden}.web01_gateway .gw_video .ica_video_layout{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px;align-items:start}.web01_gateway .gw_video .ica_video_frame{width:150px;height:113px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#080d12}.web01_gateway .gw_video img#gw_mjpeg{width:150px!important;height:113px!important;max-width:150px!important;object-fit:contain;margin:0!important;display:block}.web01_gateway .gw_video .ica_video_info{min-width:0;overflow-wrap:anywhere}.web01_gateway .gw_video .vtools{justify-content:flex-start;gap:3px}.web01_gateway .gw_video .vtools button{font-size:12px;padding:3px 5px;min-width:24px}.web01_gateway .gw_video .ica_video_info p{margin:5px 0;font-size:11px}.web01_gateway .gw_video{height:270px;box-sizing:border-box}.web01_gateway .gw_link{height:270px;box-sizing:border-box;overflow:auto}.web01_gateway .gw_identity,.web01_gateway .gw_pair{height:265px;box-sizing:border-box}.web01_gateway .gw_diag{height:545px;box-sizing:border-box;overflow:auto}.web01_network .ica_net_form{display:contents}.web01_network .ica_factory{display:inline-block;margin-left:10px;vertical-align:top}.web01_network .ica_net_form .actions{display:inline-block;vertical-align:top}.web01_network .ica_factory .btn{margin-top:6px}@media(max-width:1200px){.web01_gateway{grid-template-columns:repeat(2,380px)}.web01_gateway .gw_diag{grid-column:1;grid-row:3;height:auto}}@media(max-width:800px){.web01_gateway{grid-template-columns:minmax(0,1fr)}.web01_gateway>.card{width:100%;grid-column:1!important;grid-row:auto!important;height:auto}}"
+    ".web01_home>.card{height:258px;box-sizing:border-box;overflow:auto}"
+    ".web01_gateway .gw_video .ica_video_layout{display:grid;grid-template-columns:180px minmax(0,1fr);gap:8px;align-items:start}.web01_gateway .gw_video .ica_video_left{width:180px;min-width:0}.web01_gateway .gw_video .ica_video_frame{width:180px;height:135px;overflow:hidden;display:block;flex:none}.web01_gateway .gw_video img#gw_mjpeg{width:180px!important;height:135px!important;max-width:180px!important;max-height:135px!important;object-fit:contain;display:block;margin:0!important}.web01_gateway .gw_video .ica05_video_status{font-size:11px;line-height:14px;min-height:28px;max-height:42px;overflow:auto;margin:3px 0!important;overflow-wrap:anywhere;text-align:left}.web01_gateway .gw_video .ica_video_controls{min-width:0;overflow:hidden}.web01_gateway .gw_video .ica_video_controls .vtools{justify-content:flex-start;align-content:start;gap:3px}.web01_gateway .gw_video .ica05_video_metrics{margin-top:5px;max-width:100%;overflow-wrap:anywhere;text-align:left}.web01_gateway .gw_video .ica05_video_metrics p{font-size:11px;line-height:14px;margin:4px 0}.web01_gateway .gw_video{height:270px!important;min-height:270px!important;max-height:270px!important;overflow:auto;box-sizing:border-box}.web01_gateway .gw_link{height:270px!important;min-height:270px!important;max-height:270px!important;overflow:auto;box-sizing:border-box}.web01_gateway .gw_identity,.web01_gateway .gw_pair{height:265px!important;min-height:265px!important;max-height:265px!important;overflow:auto;box-sizing:border-box}.web01_gateway .gw_diag{height:545px!important;min-height:545px!important;max-height:545px!important;overflow:auto;box-sizing:border-box}.wrap:has(.web01_firmware){max-width:none;margin-left:8px;margin-right:auto}.web01_firmware{grid-template-columns:repeat(2,minmax(0,435px));grid-auto-rows:260px;justify-content:start;align-items:stretch}.web01_firmware>.card{width:100%;height:260px;min-height:260px;max-height:260px;box-sizing:border-box;overflow:auto}@media(max-width:900px){.web01_firmware{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.web01_firmware{grid-template-columns:minmax(0,1fr);grid-auto-rows:260px}}"
+    ".web01_gateway .gw_video{overflow:hidden!important}.web01_gateway .gw_video .ica_video_layout{min-height:0;max-height:none}.web01_gateway .gw_video .ica05_video_metrics{overflow:hidden}.web01_gateway .gw_video .ica05_video_metrics p{overflow-wrap:anywhere}/*ica06_video_fix*/"
     "</style>";
 
 
@@ -614,7 +618,7 @@ static void head(
 
         "<div class=top>"
 
-        "<b>KORVO</b> &nbsp; "
+        "<b>SIP CONTROL DE ACCESO</b> &nbsp; "
 
         "<a href='/'>ESTADO</a>"
 
@@ -932,7 +936,7 @@ static esp_err_t status_g(httpd_req_t *r)
 
         "<div class=web01_home><div class=card>"
 
-        "<h2>Estado</h2>"
+        "<h2>Sistema</h2>"
 
         "<div class=grid>"
 
@@ -940,7 +944,7 @@ static esp_err_t status_g(httpd_req_t *r)
 
         "<div>Equipo</div>"
 
-        "<div><b>KORVO</b></div>"
+        "<div><b>ICA</b></div>"
 
 
 
@@ -980,6 +984,7 @@ static esp_err_t status_g(httpd_req_t *r)
 
 
 
+        "</div></div><div class=card><h2>Configuracion de red</h2><div class=grid>"
         "<div>Wi-Fi STA</div>"
 
         "<div class=%s>%s</div>"
@@ -998,13 +1003,13 @@ static esp_err_t status_g(httpd_req_t *r)
 
 
 
-        "<div>IP KORVO</div>"
+        "<div>IP</div>"
 
         "<div class=mono>%s</div>"
 
 
 
-        "<div>Gateway sugerido (ENROLL)</div>"
+        "<div>Gateway IP</div>"
 
         "<div class=mono>%s</div>"
 
@@ -1120,11 +1125,11 @@ static esp_err_t status_g(httpd_req_t *r)
 
     snprintf(b, bz,
 
-        "<div class=card><h2>Gateway V2.5</h2><div class=grid>"
+        "<div class=card><h2>Gateway</h2><div class=grid>"
 
-        "<div>Host / Sala KORVO</div><div class=mono>%s</div>"
+        "<div>Host</div><div class=mono>%s</div>"
 
-        "<div>IP Gateway</div><div class=mono>%s</div>"
+        
 
         "<div>WebSocket</div><div class=%s>%s</div>"
 
@@ -1140,13 +1145,11 @@ static esp_err_t status_g(httpd_req_t *r)
 
         "<div>SIP State</div><div class=mono>%s</div>"
 
-        "<div>Diccionario V2</div><div class=%s>%s</div>"
+        "<div>Diccionario</div><div class=%s>%s</div>"
 
-        "</div><p><a href='/gateway'>Configurar Gateway IP</a></p></div></div>",
+        "</div></div></div>",
 
         gw.local.hostname,
-
-        gw.expected_gateway.ip[0] ? gw.expected_gateway.ip : "NO CONFIGURADO",
 
         gw.websocket_connected ? "ok" : "bad", gw.websocket_connected ? "CONNECTED" : "DISCONNECTED",
 
@@ -1182,6 +1185,7 @@ static esp_err_t status_g(httpd_req_t *r)
 
 
 
+    httpd_resp_sendstr_chunk(r, "<script>(function(){""var cards=document.querySelectorAll('.web01_home>.card');""if(cards.length<3)return;""var g=cards[2].querySelector('.grid'),s=cards[0].querySelector('.grid');""if(!g||!s)return;var a=Array.from(g.children);""for(var i=0;i+1<a.length;i+=2){if(a[i].textContent.trim()==='Diccionario'){""s.appendChild(a[i]);s.appendChild(a[i+1]);break;}}""})();</script>");
     free(b);
 
     web_diag("STATUS end");
@@ -1246,13 +1250,13 @@ static esp_err_t net_g(httpd_req_t *r)
 
         "<div class=web01_network><div class=card>"
 
-        "<h2>Red KORVO</h2>"
+        "<h2>Configuracion de red</h2>"
 
         "<p class=small>Cliente Wi-Fi STA / bridge ETH01 o AP compatible.</p>"
 
 
 
-        "<form method=post action=/network><div class=formgrid>"
+        "<form class=ica_net_form method=post action=/network><div class=formgrid>"
 
 
 
@@ -1268,7 +1272,7 @@ static esp_err_t net_g(httpd_req_t *r)
 
 
 
-        "<div class=field><label>IP fija KORVO</label>"
+        "<div class=field><label>Mi IP (este dispositivo)</label>"
 
         "<input name=ip maxlength=15 value='%s'></div>"
 
@@ -1292,7 +1296,7 @@ static esp_err_t net_g(httpd_req_t *r)
 
 
 
-        "<div class=field><label>IP Gateway sugerida para ENROLL</label>"
+        "<div class=field><label>Gateway (ENROLL)</label>"
 
         "<input name=gateway_node maxlength=15 value='%s'></div>"
 
@@ -1307,20 +1311,8 @@ static esp_err_t net_g(httpd_req_t *r)
 
 
         "</form>"
-
-
-
-        "<details><summary>Referencia de laboratorio</summary><p class=small>"
-
-        "Laboratorio: korvo_wifi / "
-
-        "KORVO 192.168.10.50 / "
-
-        "LAN GW 192.168.10.1 / "
-
-        "Gateway sugerido 192.168.10.51"
-
-        "</p></details>"
+        "<form class=ica_factory method=post action=/factory-network onsubmit='return confirm(&quot;Restaurar red de fabrica?&quot;)'>"
+        "<button class=btn>RESTAURAR RED DE FABRICA</button></form>"
 
 
 
@@ -1328,19 +1320,7 @@ static esp_err_t net_g(httpd_req_t *r)
 
 
 
-        "<details class=card><summary>Mantenimiento de red</summary>"
-
-        "<form method=post action=/factory-network onsubmit='return confirm(&quot;Restaurar red de fabrica?&quot;)'>"
-
-        "<button class=btn>"
-
-        "RESTAURAR RED DE FABRICA"
-
-        "</button>"
-
-        "</form>"
-
-        "</details></div>",
+        "</div>",
 
 
 
@@ -1802,9 +1782,9 @@ static esp_err_t gateway_g(httpd_req_t *r)
 
         /* V25-P04 TAG HOST: etiquetas web, NVS intacta. */
 
-        "<div class=web01_gateway><div class='card gw_identity'><h2>Identidad KORVO</h2>"
+        "<div class=web01_gateway><div class='card gw_identity'><h2>Identificacion del dispositivo</h2>"
 
-        "<p class=small>Identidad de sala / pairing por IP.</p>"
+        ""
 
         "<form method=post action=/gateway>"
 
@@ -1867,8 +1847,8 @@ static esp_err_t gateway_g(httpd_req_t *r)
         "</div></div>"
         "<div class='card gw_video'>"
         "<h2>VIDEO STREAMING</h2>"
-        "<img id='gw_mjpeg' alt='Streaming detenido'>"
-        "<p id='gw_video_state' class=small>Detenido - bajo demanda</p>"
+        "<div class=ica_video_layout><div class=ica_video_left><div class=ica_video_frame><img id='gw_mjpeg' alt='Streaming detenido'></div>"
+        "<p id='gw_video_state' class='small ica05_video_status'>Detenido - bajo demanda</p></div><div class=ica_video_controls>"
         "<div class=vtools>"
         "<button type=button title='Fotografia' aria-label='Fotografia' onclick='gwVideoSnap()'>&#128247;</button>"
         "<button type=button title='Iniciar streaming' aria-label='Iniciar streaming' onclick='gwVideoStart()'>&#9654;</button>"
@@ -1880,8 +1860,8 @@ static esp_err_t gateway_g(httpd_req_t *r)
         "<button type=button title='Desactivar IA' aria-label='Desactivar IA' onclick='gwAI(0)'>IA-</button>"
         "<button type=button title='Ampliar video' aria-label='Ampliar video' onclick='gwFull()'>&#9974;</button>"
         "<button type=button title='Socket Process View' aria-label='Socket Process View' onclick='socketProcessView01()'>NET</button>"
-        "</div><p class=small>240 x 180 | 10 FPS objetivo | ON-DEMAND</p><p id=gw_ai_state class=small>IA: --</p>"
-        "<p id=gw_socket_diag class=small>SOCKETS TCP/IP | USADOS: -- | LIBRES: -- | TOTAL: -- | MJPEG: --</p>"
+        "</div></div></div><div class=ica05_video_metrics><p class=small>240 x 180 | 10 FPS objetivo | ON-DEMAND</p><p id=gw_ai_state class=small>IA: --</p>"
+        "<p id=gw_socket_diag class=small>SOCKETS TCP/IP | USADOS: -- | LIBRES: -- | TOTAL: -- | MJPEG: --</p></div>"
         "</div>"
         "<div class='card gw_diag'><h2>Diagnostico STREAM2</h2><div id=gw_diag_content class=grid><div>Consultando...</div></div></div></div>"
         "<script>"

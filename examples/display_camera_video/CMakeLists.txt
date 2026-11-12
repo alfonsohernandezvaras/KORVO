@@ -15,7 +15,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # actualizaciones, reinstalaciones y downgrades.
 set(PROJECT_VER "1.3.20")
 
-project(display_camera_new)
+project(intercom_acceso)
 
 # ESP-IDF 6.1 + GCC 15.x: Bluedroid in this IDF release emits
 # -Wstringop-truncation from framework source (bta_dm_act.c).
