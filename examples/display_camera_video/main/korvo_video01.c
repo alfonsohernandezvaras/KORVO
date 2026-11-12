@@ -74,7 +74,7 @@ static void stream_close_clients(void){
  int fds[2];portENTER_CRITICAL(&stream_lock);
  for(int i=0;i<2;i++)fds[i]=stream_fds[i];
  portEXIT_CRITICAL(&stream_lock);
- for(int i=0;i<4;i++)if(fds[i]>=0){
+ for(int i=0;i<2;i++)if(fds[i]>=0){
    shutdown(fds[i],SHUT_RDWR);
    ESP_LOGW(TAG,"CTRL01 cierre cliente fd=%d",fds[i]);
  }
@@ -489,7 +489,62 @@ static esp_err_t spv_page(httpd_req_t *r)
         "update();setInterval(update,2000)</script></body></html>");
 }
 
+/* KORVO_TELEMETRY02: no tasks, timers or sampling until main completes boot. */
+static volatile bool kt02_enabled = false;
+void korvo_video01_telemetry_enable(void)
+{
+    kt02_enabled = true;
+    ESP_LOGI(TAG, "TELEMETRY READY - passive HTTP sampling enabled");
+}
+static esp_err_t kt02_data(httpd_req_t *r)
+{
+    if (!kt02_enabled) {
+        httpd_resp_set_status(r, "503 Service Unavailable");
+        httpd_resp_set_type(r, "application/json");
+        return httpd_resp_sendstr(r, "{\"status\":\"waiting_for_korvo_boot\"}");
+    }
+    static uint32_t last_frames=0, last_callbacks=0;
+    static int64_t last_us=0;
+    const int64_t now=esp_timer_get_time();
+    const uint32_t f=published, c=callbacks;
+    float fps_jpeg=0, fps_camera=0;
+    if (last_us>0 && now>last_us) {
+        float dt=(float)(now-last_us)/1000000.0f;
+        fps_jpeg=(float)(f-last_frames)/dt;
+        fps_camera=(float)(c-last_callbacks)/dt;
+    }
+    last_frames=f; last_callbacks=c; last_us=now;
+    multi_heap_info_t ir={0},pr={0};
+    heap_caps_get_info(&ir,MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    heap_caps_get_info(&pr,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    char b[1100];
+    snprintf(b,sizeof(b),
+      "{\"version\":\"TELEMETRY02\",\"status\":\"ready\",\"uptime_ms\":%lld,"
+      "\"cpu\":{\"core0_pct\":null,\"core1_pct\":null},"
+      "\"memory\":{\"internal\":{\"total\":%u,\"used\":%u,\"free\":%u,\"minimum_free\":%u,\"largest_free\":%u},"
+      "\"psram\":{\"total\":%u,\"used\":%u,\"free\":%u,\"minimum_free\":%u,\"largest_free\":%u}},"
+      "\"video\":{\"camera_ok\":%s,\"fps_camera_callbacks\":%.2f,\"fps_mjpeg_encoded\":%.2f,"
+      "\"fps_hmi\":null,\"mjpeg_clients\":%lu,\"frames\":%lu,\"callbacks\":%lu,"
+      "\"rejected\":%lu,\"encode_errors\":%lu},"
+      "\"network\":{\"sockets_configured\":%d}}",
+      (long long)(now/1000),
+      (unsigned)(ir.total_free_bytes+ir.total_allocated_bytes),(unsigned)ir.total_allocated_bytes,
+      (unsigned)ir.total_free_bytes,(unsigned)ir.minimum_free_bytes,(unsigned)ir.largest_free_block,
+      (unsigned)(pr.total_free_bytes+pr.total_allocated_bytes),(unsigned)pr.total_allocated_bytes,
+      (unsigned)pr.total_free_bytes,(unsigned)pr.minimum_free_bytes,(unsigned)pr.largest_free_block,
+      korvo_video01_ready()?"true":"false",(double)fps_camera,(double)fps_jpeg,
+      (unsigned long)stream_clients,(unsigned long)f,(unsigned long)c,
+      (unsigned long)rejected,(unsigned long)encode_errors,CONFIG_LWIP_MAX_SOCKETS);
+    httpd_resp_set_type(r,"application/json");
+    httpd_resp_set_hdr(r,"Cache-Control","no-store");
+    return httpd_resp_sendstr(r,b);
+}
+
 void korvo_video01_register(httpd_handle_t server){
+    /* Only registration here: handler returns 503 until main signals boot complete. */
+    httpd_uri_t kt02={.uri="/api/telemetry",.method=HTTP_GET,.handler=kt02_data};
+    esp_err_t kt02_err=httpd_register_uri_handler(server,&kt02);
+    ESP_LOGI(TAG,"TELEMETRY INIT - URI registration: %s",esp_err_to_name(kt02_err));
     httpd_uri_t spv={.uri="/video/socket-process",.method=HTTP_GET,.handler=spv_page};
     httpd_uri_t spvd={.uri="/video/socket-process-data",.method=HTTP_GET,.handler=spv_data};
     httpd_register_uri_handler(server,&spv);

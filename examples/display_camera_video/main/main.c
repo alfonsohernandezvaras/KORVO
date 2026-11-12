@@ -1234,6 +1234,7 @@ void app_main(void)
      * korvo_network_init() owns STA + fixed IPv4 configuration.
      */
     ESP_LOGI(TAG, "V21.19: Starting KORVO network after READY...");
+    bool kt02_web_ok = false;
     esp_err_t korvo_net_err = korvo_network_init();
     if (korvo_net_err != ESP_OK) {
         ESP_LOGE(TAG, "V21.19: KORVO NETWORK FAILED: %s",
@@ -1275,6 +1276,7 @@ void app_main(void)
             ESP_LOGE(TAG, "V21.20: WEBSERVER FAILED: %s", esp_err_to_name(web_err));
         } else {
             ESP_LOGI(TAG, "V21.20: KORVO WEBSERVER STARTED");
+            kt02_web_ok = true;
             korvo_hmi_update_webserver(true);
         }
 
@@ -1304,6 +1306,14 @@ void app_main(void)
         ESP_LOGI(TAG, "ESP-DL face detection task started");
     }
     log_memory_headroom("after face AI task");
+
+    /* TELEMETRY02: only after original network, webserver and AI startup. */
+    if (korvo_net_err == ESP_OK && kt02_web_ok) {
+        ESP_LOGI(TAG, "TELEMETRY INIT - original boot sequence complete");
+        korvo_video01_telemetry_enable();
+    } else {
+        ESP_LOGW(TAG, "TELEMETRY ERROR - network/webserver not ready; telemetry disabled");
+    }
 
     /*
      * Do NOT force the screensaver here. Motion owns standby from now on
