@@ -468,25 +468,24 @@ static esp_err_t spv_page(httpd_req_t *r)
     httpd_resp_set_type(r, "text/html; charset=utf-8");
     httpd_resp_set_hdr(r, "Cache-Control", "no-store");
     return httpd_resp_sendstr(r,
-        "<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>KORVO SOCKET PROCESS VIEW</title><style>body{font:14px Arial;background:#111820;color:#dce7f2;margin:22px}"
-        "table{border-collapse:collapse;width:100%;margin:10px 0}td,th{border-bottom:1px solid #35414d;padding:8px;text-align:left}"
-        "th{color:#8fc7ee}code,pre{white-space:pre-wrap;overflow-wrap:anywhere}h2{color:#9cd0fa}"
-        "button{padding:8px;margin:4px;background:#25384b;color:white;border:1px solid #6386a0;cursor:pointer}</style></head><body>"
-        "<h2>SOCKET PROCESS VIEW - KORVO</h2><p>Enumeracion real: getsockopt(SO_TYPE), lectura pasiva."
-        " No identifica el proceso propietario ni todos los estados TCP. La muestra incluye el socket HTTP de esta consulta.</p>"
-        "<button onclick='update()'>Actualizar</button><button onclick='window.close()'>Cerrar</button>"
-        "<div id='sum'>Consultando...</div><table><thead><tr><th>FD</th><th>Tipo</th><th>Local</th><th>Remoto</th></tr></thead>"
-        "<tbody id='rows'></tbody></table><h3>Contador anterior SOCKET-DIAG01 (calculado)</h3><pre id='old'>--</pre>"
-        "<p id='err'></p><script>let busy=false;async function update(){if(busy)return;busy=true;try{"
-        "let [a,b]=await Promise.all([fetch('/video/socket-process-data',{cache:'no-store'}),fetch('/video/sockets',{cache:'no-store'})]);"
-        "if(!a.ok)throw Error('HTTP '+a.status);let d=await a.json();"
-        "document.getElementById('sum').textContent='FD verificables: '+d.enumerated+' | Clientes MJPEG: '+d.mjpeg_clients+' | Rango probado: 0..127';"
-        "let t=document.getElementById('rows');t.replaceChildren();for(let x of d.connections){let tr=document.createElement('tr');"
-        "for(let v of [x.fd,x.type,x.local,x.remote]){let td=document.createElement('td');td.textContent=String(v);tr.appendChild(td)}t.appendChild(tr)}"
-        "document.getElementById('old').textContent=b.ok?JSON.stringify(await b.json(),null,2):'HTTP '+b.status;"
-        "document.getElementById('err').textContent='';}catch(e){document.getElementById('err').textContent='ERROR: '+e.message}finally{busy=false}}"
-        "update();setInterval(update,2000)</script></body></html>");
+        "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>KORVO - Diagnostico NET</title><style>\n"
+
+        "*{box-sizing:border-box}body{margin:0;padding:18px;background:#10171f;color:#e3edf7;font:14px Arial,sans-serif}h1{font-size:22px;color:#8dcaff;margin:0 0 8px}h2{font-size:16px;color:#a0d3ff;margin:0 0 13px}.muted{color:#a8bfd1}.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:12px}.card{border:1px solid #354858;border-radius:8px;background:#18232e;padding:16px;min-width:0}.line{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #263746}.line span:last-child{text-align:right;overflow-wrap:anywhere;color:#f5f9ff}.ok{color:#4be78d!important}.bad{color:#ff7777!important}button{padding:9px 14px;border:1px solid #6e94b0;border-radius:4px;background:#253b50;color:white;cursor:pointer}details{margin-top:15px}summary{cursor:pointer;color:#9ed4ff;font-weight:bold;padding:12px 0}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #354858;padding:7px;text-align:left}th{color:#9bd0ff}.scroll{overflow:auto}#error{color:#ff9292}small{color:#b1c5d4}\n"
+
+        "</style></head><body><div class=\"bar\"><div><h1>KORVO - DIAGNOSTICO GENERAL</h1><div class=\"muted\">TELEMETRY03 | Lectura pasiva | <span id=\"stamp\">Esperando datos</span></div></div><div><button onclick=\"refresh()\">Actualizar</button> <button onclick=\"window.close()\">Cerrar</button></div></div><div id=\"error\"></div><div class=\"grid\" id=\"cards\"></div><details id=\"socketdetail\"><summary>SOCKET PROCESS VIEW - detalle de descriptores</summary><p class=\"muted\">Enumeracion pasiva SO_TYPE; no identifica procesos ni todos los estados TCP. Incluye la conexion HTTP de consulta.</p><button onclick=\"loadSockets()\">Actualizar sockets</button><div class=\"scroll\"><table><thead><tr><th>FD</th><th>Tipo</th><th>Local</th><th>Remoto</th></tr></thead><tbody id=\"socketrows\"></tbody></table></div><small id=\"socketinfo\"></small></details>\n"
+
+        "<script>\n"
+
+        "const $=id=>document.getElementById(id);let busy=false,socketBusy=false;const fmt=(v,s='')=>v===null||v===undefined?'N/D':typeof v==='boolean'?(v?'SI':'NO'):typeof v==='number'?v.toLocaleString('es-CL')+s:String(v);function card(name,rows){let box=document.createElement('section');box.className='card';let h=document.createElement('h2');h.textContent=name;box.append(h);for(const [k,v,good] of rows){let line=document.createElement('div');line.className='line';let a=document.createElement('span'),b=document.createElement('span');a.textContent=k;b.textContent=fmt(v);if(good===true)b.className='ok';if(good===false)b.className='bad';line.append(a,b);box.append(line)}return box}\n"
+
+        "async function refresh(){if(busy||document.hidden)return;busy=true;try{let r=await fetch('/api/telemetry',{cache:'no-store'});if(!r.ok)throw Error('Telemetria HTTP '+r.status);let d=await r.json(),cpu=d.cpu||{},m=d.memory||{},v=d.video||{},n=d.network||{};let cards=[card('CPU / FREERTOS',[['CPU0',cpu.core0_pct===null?'N/D':fmt(cpu.core0_pct,'%')],['CPU1',cpu.core1_pct===null?'N/D':fmt(cpu.core1_pct,'%')],['Uptime',fmt(Math.floor((d.uptime_ms||0)/1000),' s')]]),card('MEMORIA INTERNA',[['Total',m.internal?.total],['Usada',m.internal?.used],['Libre',m.internal?.free],['Minimo libre',m.internal?.minimum_free],['Mayor bloque',m.internal?.largest_free]]),card('PSRAM',[['Total',m.psram?.total],['Usada',m.psram?.used],['Libre',m.psram?.free],['Minimo libre',m.psram?.minimum_free],['Mayor bloque',m.psram?.largest_free]]),card('CAMARA / HMI',[['Camara',v.camera_ok?'OK':'ERROR',v.camera_ok],['Callbacks',v.callbacks],['FPS callbacks',v.fps_camera_callbacks],['FPS HMI',v.fps_hmi],['Rechazados',v.rejected]]),card('VIDEO MJPEG',[['FPS codificacion',v.fps_mjpeg_encoded],['Clientes',v.mjpeg_clients],['Frames',v.frames],['Errores codificacion',v.encode_errors]]),card('RED / SISTEMA',[['Sockets configurados',n.sockets_configured],['Version',d.version],['Estado',d.status,d.status==='ready']])];$('cards').replaceChildren(...cards);$('stamp').textContent=new Date().toLocaleTimeString('es-CL');$('error').textContent='';}catch(e){$('error').textContent='ERROR: '+e.message}finally{busy=false}}\n"
+
+        "async function loadSockets(){if(socketBusy)return;socketBusy=true;try{let r=await fetch('/video/socket-process-data',{cache:'no-store'});if(!r.ok)throw Error('Sockets HTTP '+r.status);let d=await r.json();let body=$('socketrows');body.replaceChildren();for(const x of d.connections||[]){let tr=document.createElement('tr');for(const k of ['fd','type','local','remote']){let td=document.createElement('td');td.textContent=fmt(x[k]);tr.append(td)}body.append(tr)}$('socketinfo').textContent='FD verificables: '+d.enumerated+' | Clientes MJPEG: '+d.mjpeg_clients+' | Rango: 0..127';}catch(e){$('socketinfo').textContent='ERROR: '+e.message}finally{socketBusy=false}}\n"
+
+        "$('socketdetail').addEventListener('toggle',()=>{if($('socketdetail').open)loadSockets()});refresh();setInterval(refresh,2000);\n"
+
+        "</script></body></html>\n"
+    );
 }
 
 /* KORVO_TELEMETRY02: no tasks, timers or sampling until main completes boot. */
