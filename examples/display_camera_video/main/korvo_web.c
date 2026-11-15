@@ -1,3 +1,4 @@
+/* KORVO_HMI_CONSOLIDACION01: indicadores SIP independientes del diagnostico de diccionario. */
 #include "korvo_web.h"
 #include "korvo_camera_settings.h"
 #include "korvo_video01.h"
@@ -1159,17 +1160,15 @@ static esp_err_t status_g(httpd_req_t *r)
 
         gw.websocket_connected ? "ok" : "bad", gw.websocket_connected ? "ONLINE" : "OFFLINE",
 
-        (gw.websocket_connected && gw.dictionary_state == KORVO_DICT_OK && gw.sip_registered) ? "ok" : "bad",
+        (gw.websocket_connected && gw.sip_registered) ? "ok" : "bad",
 
-        !gw.websocket_connected ? "SIN ENLACE" :
-
-            gw.dictionary_state != KORVO_DICT_OK ? "DICT INVALIDO" :
+        !gw.websocket_connected ? "UNKNOWN" :
 
             gw.sip_registered ? "YES" : "NO",
 
-        (gw.websocket_connected && gw.dictionary_state == KORVO_DICT_OK) ?
+        gw.websocket_connected ?
 
-            (gw.sip_state[0] ? gw.sip_state : "--") : "--",
+            (gw.sip_state[0] ? gw.sip_state : "UNKNOWN") : "UNKNOWN",
 
         gw.dictionary_state == KORVO_DICT_OK ? "ok" : "bad",
 
