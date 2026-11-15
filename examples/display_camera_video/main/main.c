@@ -85,6 +85,8 @@ static lv_color_format_t lvgl_cam_rgb565_fmt;
 
 /* ===== FACE DETECTION ===== */
 #define FACE_DETECT_EVERY_N_FRAMES 5 /* VIDEO15: maximo nominal 4 muestras/s con 20 FPS de camara; tarea IA independiente */
+/* IA02: mantener inferencia facial por 5 s despues de una deteccion valida. */
+#define FACE_TRACK_HOLD_MS 5000
 #define CAMERA_START_RETRIES        5
 #define VIDEO_OPEN_RETRIES          10
 
@@ -100,6 +102,7 @@ void korvo_esp_dl_set_enabled(bool enabled) {
     if (!enabled) face_ai_pending = false;
     ESP_LOGI("ESP_DL_SWITCH", "ESP-DL %s", enabled ? "ON" : "OFF");
 }
+static volatile TickType_t last_detected_face_tick = 0;
 static uint32_t face_frame_counter = 0;
 static uint16_t face_ai_width = 0;
 static uint16_t face_ai_height = 0;
@@ -477,6 +480,8 @@ static void face_detection_task(void *arg)
         TickType_t now = xTaskGetTickCount();
 
         if (result.detected) {
+            /* IA02: extender seguimiento incluso si cesa el movimiento global. */
+            last_detected_face_tick = xTaskGetTickCount();
             ESP_LOGI(TAG, "FACE score=%.3f box=[%d,%d,%d,%d]",
                      result.score, result.x1, result.y1,
                      result.x2, result.y2);
@@ -581,7 +586,9 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         face_ai_buffer != NULL &&
         face_ai_mutex != NULL &&
         !face_ai_pending &&
-        motion_active &&
+        (motion_active ||
+         (last_detected_face_tick != 0 &&
+          (xTaskGetTickCount() - last_detected_face_tick) < pdMS_TO_TICKS(FACE_TRACK_HOLD_MS))) &&
         (face_frame_counter % FACE_DETECT_EVERY_N_FRAMES) == 0) {
 
         size_t required = (size_t)camera_buf_hes * camera_buf_ves * 2;
