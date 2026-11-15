@@ -21,6 +21,7 @@
 #include <stdlib.h>
 
 #include <string.h>
+#include <stdint.h>
 
 #include <unistd.h>
 
@@ -76,7 +77,6 @@ static void web_diag(const char *route)
 
 #define ADMIN_PASS   "password"
 
-#define COOKIE       "KORVO_SESSION=korvo_admin"
 
 #define UPLOAD_CHUNK 16384
 
@@ -176,47 +176,30 @@ static const char *STYLE =
 
 
 
-static bool auth(httpd_req_t *r)
-
-{
-
-    size_t n =
-
-        httpd_req_get_hdr_value_len(
-
-            r,
-
-            "Cookie");
-
-
-
-    if (!n || n > 255) {
-
-        return false;
-
-    }
-
-
-
-    char b[256];
-
-
-
-    return
-
-        httpd_req_get_hdr_value_str(
-
-            r,
-
-            "Cookie",
-
-            b,
-
-            sizeof(b)) == ESP_OK &&
-
-        strstr(b, COOKIE) != NULL;
-
+/* PLANOS02: sesiones independientes en RAM, sin cookies fijas reutilizables. */
+#define ROOM_USER "usuario"
+#define ROOM_PASS "12345"
+static char s_admin_token[33]={0};
+static char s_room_token[33]={0};
+static void issue_token(char *out){
+ uint8_t bytes[16];esp_fill_random(bytes,sizeof(bytes));
+ for(size_t i=0;i<sizeof(bytes);i++)snprintf(out+i*2,3,"%02x",bytes[i]);
+ out[32]=0;
 }
+static bool has_token(httpd_req_t *r,const char *token){
+ if(!token[0])return false;
+ char cookies[256];size_t len=httpd_req_get_hdr_value_len(r,"Cookie");
+ if(!len||len>=sizeof(cookies)||httpd_req_get_hdr_value_str(r,"Cookie",cookies,sizeof(cookies))!=ESP_OK)return false;
+ const char *p=cookies;
+ while((p=strstr(p,"KORVO_SESSION="))!=NULL){
+  if((p==cookies||p[-1]==' '||p[-1]==';')&&strncmp(p+14,token,32)==0&&(p[46]==';'||p[46]==' '||p[46]==0))return true;
+  p+=14;
+ }
+ return false;
+}
+static bool auth(httpd_req_t *r){return has_token(r,s_admin_token);}
+static bool planos_auth(httpd_req_t *r){return auth(r)||has_token(r,s_room_token);}
+
 
 
 
@@ -629,6 +612,7 @@ static void head(
         "<a href='/gateway'>GATEWAY</a>"
 
         "<a href='/firmware'>FIRMWARE</a>"
+        "<a href='/planos'>PLANOS EQUIPAMIENTO</a>"
 
         "<a href='/logout'>SALIR</a>"
 
@@ -742,105 +726,32 @@ static esp_err_t login_g(httpd_req_t *r)
 
 
 
-static esp_err_t login_p(httpd_req_t *r)
-
-{
-
-    char b[256];
-
-    char u[64] = {0};
-
-    char p[64] = {0};
-
-
-
-    if (body(r, b, sizeof(b)) != ESP_OK ||
-
-        !val(b, "user", u, sizeof(u)) ||
-
-        !val(b, "pass", p, sizeof(p))) {
-
-
-
-        return httpd_resp_send_err(
-
-            r,
-
-            HTTPD_400_BAD_REQUEST,
-
-            "Solicitud invalida");
-
-    }
-
-
-
-    if (strcmp(u, ADMIN_USER) ||
-
-        strcmp(p, ADMIN_PASS)) {
-
-
-
-        httpd_resp_set_status(
-
-            r,
-
-            "401 Unauthorized");
-
-
-
-        return httpd_resp_sendstr(
-
-            r,
-
-            "Usuario o clave incorrectos");
-
-    }
-
-
-
-    httpd_resp_set_hdr(
-
-        r,
-
-        "Set-Cookie",
-
-        COOKIE "; Path=/; HttpOnly; SameSite=Strict");
-
-
-
-    return redir(
-
-        r,
-
-        "/");
-
+static esp_err_t login_p(httpd_req_t *r){
+ char b[256],u[64]={0},p[64]={0};
+ if(body(r,b,sizeof(b))!=ESP_OK||!val(b,"user",u,sizeof(u))||!val(b,"pass",p,sizeof(p)))return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"Solicitud invalida");
+ bool admin=!strcmp(u,ADMIN_USER)&&!strcmp(p,ADMIN_PASS);
+ bool room=!strcmp(u,ROOM_USER)&&!strcmp(p,ROOM_PASS);
+ if(!admin&&!room){httpd_resp_set_status(r,"401 Unauthorized");return httpd_resp_sendstr(r,"Usuario o clave incorrectos");}
+ char *token=admin?s_admin_token:s_room_token;issue_token(token);
+ char cookie[128];snprintf(cookie,sizeof(cookie),"KORVO_SESSION=%s; Path=/; HttpOnly; SameSite=Strict",token);
+ httpd_resp_set_hdr(r,"Set-Cookie",cookie);
+ return redir(r,admin?"/":"/planos");
 }
 
 
 
 
 
-static esp_err_t logout_g(httpd_req_t *r)
 
-{
-
-    httpd_resp_set_hdr(
-
-        r,
-
-        "Set-Cookie",
-
-        "KORVO_SESSION=; Path=/; Max-Age=0");
-
-
-
-    return redir(
-
-        r,
-
-        "/login");
-
+static esp_err_t logout_g(httpd_req_t *r){
+ char cookies[256]={0};
+ if(httpd_req_get_hdr_value_len(r,"Cookie")<sizeof(cookies))httpd_req_get_hdr_value_str(r,"Cookie",cookies,sizeof(cookies));
+ if(has_token(r,s_admin_token))s_admin_token[0]=0;
+ if(has_token(r,s_room_token))s_room_token[0]=0;
+ httpd_resp_set_hdr(r,"Set-Cookie","KORVO_SESSION=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict");
+ return redir(r,"/login");
 }
+
 
 
 
@@ -3431,7 +3342,7 @@ esp_err_t korvo_web_start(void)
 
 
     /* KORVO_PLANOS01: solo registrar rutas al final del WebServer existente. */
-    e = korvo_planos_register(s_server, auth);
+    e = korvo_planos_register(s_server, planos_auth, auth);
     if (e != ESP_OK) { httpd_stop(s_server); s_server = NULL; return e; }
 
     ESP_LOGI(

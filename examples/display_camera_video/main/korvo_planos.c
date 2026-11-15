@@ -12,11 +12,13 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <unistd.h>
 
 #define ROOT BSP_SD_MOUNT_POINT "/korvo/planos equipamiento"
 #define MAX_PATH 384
 #define MAX_UPLOAD (32U*1024U*1024U)
 static bool (*s_auth)(httpd_req_t *) = NULL;
+static bool (*s_admin)(httpd_req_t *) = NULL; /* PLANOS03 */
 static bool s_busy = false;
 static const char *TAG="korvo_planos";
 
@@ -24,6 +26,18 @@ static esp_err_t reply(httpd_req_t *r,const char *status,const char *msg){
  httpd_resp_set_status(r,status);httpd_resp_set_type(r,"text/plain; charset=utf-8");return httpd_resp_sendstr(r,msg);
 }
 static bool access_ok(httpd_req_t *r){if(s_auth && s_auth(r))return true;reply(r,"403 Forbidden","Acceso no autorizado");return false;}
+/* PLANOS03: no confiar en botones ocultos; validar cada escritura en servidor. */
+static bool write_ok(httpd_req_t *r){
+ if(s_admin && s_admin(r))return true;
+ reply(r,"403 Forbidden","Solo administrador puede modificar planos");
+ return false;
+}
+static esp_err_t role_g(httpd_req_t *r){
+ if(!access_ok(r))return ESP_OK;
+ httpd_resp_set_type(r,"application/json; charset=utf-8");
+ httpd_resp_set_hdr(r,"Cache-Control","no-store");
+ return httpd_resp_sendstr(r,(s_admin&&s_admin(r))?"{\"admin\":true}":"{\"admin\":false}");
+}
 static bool decode(const char *in,char *out,size_t cap){
  size_t j=0;for(size_t i=0;in[i];i++){
   unsigned char c=(unsigned char)in[i];if(c=='%'){
@@ -97,7 +111,7 @@ static esp_err_t download_g(httpd_req_t *r){
  return result;
 }
 static esp_err_t upload_p(httpd_req_t *r){
- if(!access_ok(r))return ESP_OK;
+ if(!write_ok(r))return ESP_OK;
  if(s_busy)return reply(r,"503 Service Unavailable","Transferencia en curso");
  if(r->content_len<=0||(unsigned)r->content_len>MAX_UPLOAD)return reply(r,"413 Payload Too Large","Maximo 32 MB");
  char rel[320],path[MAX_PATH];if(!query_path(r,rel,sizeof(rel))||!rel[0]||!safe_path(rel,path,sizeof(path))||!pdf_name(rel))return reply(r,"400 Bad Request","Nombre PDF invalido");
@@ -118,7 +132,7 @@ static esp_err_t upload_p(httpd_req_t *r){
  return ok?reply(r,"201 Created","PDF almacenado correctamente"):reply(r,"400 Bad Request","Carga incompleta o PDF invalido");
 }
 static esp_err_t mkdir_p(httpd_req_t *r){
- if(!access_ok(r))return ESP_OK;
+ if(!write_ok(r))return ESP_OK;
  if(s_busy)return reply(r,"503 Service Unavailable","Transferencia en curso");
  char rel[320],path[MAX_PATH];if(!query_path(r,rel,sizeof(rel))||!rel[0]||!safe_path(rel,path,sizeof(path))||pdf_name(rel))return reply(r,"400 Bad Request","Nombre invalido");
  char parent[MAX_PATH];strcpy(parent,path);char *slash=strrchr(parent,'/');if(!slash)return reply(r,"400 Bad Request","Ruta invalida");*slash=0;
@@ -126,24 +140,77 @@ static esp_err_t mkdir_p(httpd_req_t *r){
  if(mkdir(path,0775)!=0)return reply(r,errno==EEXIST?"409 Conflict":"500 Internal Server Error","No se pudo crear carpeta");
  return reply(r,"201 Created","Carpeta creada");
 }
+/* PLANOS02: acciones SD limitadas estrictamente a ROOT. */
+static bool param_path(httpd_req_t *r,const char *key,char *rel,size_t cap){
+ char query[900],raw[450];size_t n=httpd_req_get_url_query_len(r);
+ if(!n||n>=sizeof(query)||httpd_req_get_url_query_str(r,query,sizeof(query))!=ESP_OK)return false;
+ if(httpd_query_key_value(query,key,raw,sizeof(raw))!=ESP_OK)return false;
+ return decode(raw,rel,cap);
+}
+static esp_err_t delete_p(httpd_req_t *r){
+ if(!write_ok(r))return ESP_OK;
+ if(s_busy)return reply(r,"503 Service Unavailable","Transferencia en curso");
+ char rel[320],path[MAX_PATH];struct stat st;
+ if(!param_path(r,"path",rel,sizeof(rel))||!rel[0]||!safe_path(rel,path,sizeof(path)))return reply(r,"400 Bad Request","Ruta invalida");
+ if(stat(path,&st)!=0)return reply(r,"404 Not Found","No existe");
+ if(S_ISREG(st.st_mode)&&pdf_name(rel)){
+  if(remove(path)!=0)return reply(r,"500 Internal Server Error","No se pudo eliminar PDF");
+ }else if(S_ISDIR(st.st_mode)){
+  if(rmdir(path)!=0)return reply(r,"409 Conflict","La carpeta debe estar vacia");
+ }else return reply(r,"403 Forbidden","Tipo de archivo no permitido");
+ return reply(r,"200 OK","Eliminado");
+}
+static esp_err_t move_p(httpd_req_t *r){
+ if(!write_ok(r))return ESP_OK;
+ if(s_busy)return reply(r,"503 Service Unavailable","Transferencia en curso");
+ char from[320],to[320],src[MAX_PATH],dst[MAX_PATH];struct stat st;
+ if(!param_path(r,"from",from,sizeof(from))||!param_path(r,"to",to,sizeof(to))||!from[0]||!to[0]||!safe_path(from,src,sizeof(src))||!safe_path(to,dst,sizeof(dst)))return reply(r,"400 Bad Request","Ruta invalida");
+ if(stat(src,&st)!=0||!S_ISREG(st.st_mode)||!pdf_name(from)||!pdf_name(to))return reply(r,"400 Bad Request","Solo se pueden mover PDF");
+ if(stat(dst,&st)==0)return reply(r,"409 Conflict","Ya existe un archivo con ese nombre");
+ char parent[MAX_PATH];strcpy(parent,dst);char *slash=strrchr(parent,'/');if(!slash)return reply(r,"400 Bad Request","Ruta invalida");*slash=0;
+ if(stat(parent,&st)!=0||!S_ISDIR(st.st_mode))return reply(r,"404 Not Found","Carpeta destino inexistente");
+ if(rename(src,dst)!=0)return reply(r,"500 Internal Server Error","No se pudo mover");
+ return reply(r,"200 OK","Archivo movido");
+}
+
+/* KORVO_PLANOS04: seleccion de archivos y carpetas para eliminar. */
 static const char PAGE[] =
-"<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Planos Equipamiento</title>"
-"<style>body{font:14px Arial;background:#10151b;color:#e9eef4;margin:0}header{background:#171f28;padding:14px}main{padding:18px;max-width:1000px}button,input{padding:8px;background:#202c37;color:white;border:1px solid #445363;border-radius:5px}button{cursor:pointer}.folder{color:#8ecbff}.file{color:#d6e6f8}.item{padding:8px;border-bottom:1px solid #34404d;cursor:pointer}.item:hover{background:#253442}.child{margin-left:22px}section{background:#18212b;padding:15px;margin:12px 0;border-radius:8px}a{color:#8ecbff}small{color:#9eabb8}</style></head>"
-"<body><header><a href='/'>Estado</a> &nbsp; / &nbsp; <b>Planos Equipamiento</b></header><main><h2>Repositorio documental SD</h2><small>Seleccione un PDF para descargarlo directamente al PC.</small><section id='tree'>Cargando...</section>"
-"<section><h3>Administrar documentos</h3><small>Ruta relativa dentro de Planos Equipamiento (ejemplo: Electricos/Unilineal.pdf)</small><p><input id='path' style='width:70%' placeholder='Carpeta/Archivo.pdf'></p><input id='file' type='file' accept='.pdf,application/pdf'><button onclick='upload()'>Subir PDF</button><p><input id='folder' placeholder='Nombre de carpeta'><button onclick='makeFolder()'>Crear carpeta</button></p><small id='msg'></small></section></main>"
-"<script>const api='/api/planos/';function url(p){return encodeURIComponent(p).replace(/%2F/g,'/')}function msg(s){document.getElementById('msg').textContent=s}"
-"async function load(dir,host){let r=await fetch(api+'tree?path='+url(dir));if(!r.ok){host.textContent='Error al leer SD';return}let data=await r.json();host.textContent='';if(!data.length){host.textContent='(Carpeta vacia)';return}data.sort((a,b)=>Number(b.dir)-Number(a.dir)||a.name.localeCompare(b.name));for(let x of data){let p=dir?dir+'/'+x.name:x.name;let row=document.createElement('div');row.className='item '+(x.dir?'folder':'file');row.textContent=(x.dir?'📁 ':'📄 ')+x.name+(x.dir?'':' ('+Math.round(x.size/1024)+' KB)');host.appendChild(row);if(x.dir){let child=document.createElement('div');child.className='child';host.appendChild(child);let open=false;row.onclick=()=>{open=!open;if(open)load(p,child);else child.textContent=''}}else row.onclick=()=>{window.location.href=api+'download?path='+url(p)}}}"
-"async function upload(){let f=document.getElementById('file').files[0],p=document.getElementById('path').value.trim();if(!f||!p.toLowerCase().endsWith('.pdf')){msg('Seleccione PDF y ruta .pdf');return}if(f.size>33554432){msg('Maximo 32 MB');return}msg('Subiendo...');try{let r=await fetch(api+'upload?path='+url(p),{method:'POST',headers:{'Content-Type':'application/pdf'},body:f});msg(await r.text());if(r.ok)load('',document.getElementById('tree'))}catch(e){msg('Error de red')}}"
-"async function makeFolder(){let p=document.getElementById('folder').value.trim();if(!p)return;try{let r=await fetch(api+'mkdir?path='+url(p),{method:'POST'});msg(await r.text());if(r.ok)load('',document.getElementById('tree'))}catch(e){msg('Error de red')}}load('',document.getElementById('tree'));</script></body></html>";
+"<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Planos Equipamiento</title>"
+"<style>*{box-sizing:border-box}body{font:14px Arial;background:#10151b;color:#e9eef4;margin:0}header{background:#171f28;padding:12px;display:flex;justify-content:space-between}main{padding:15px;max-width:1050px}a{color:#8ecbff}button,input,select{padding:8px;background:#202c37;color:white;border:1px solid #445363;border-radius:5px}button{cursor:pointer}button:disabled{opacity:.45}section{background:#18212b;padding:14px;margin:12px 0;border-radius:8px}.item{display:flex;align-items:center;gap:10px;padding:9px;border-bottom:1px solid #34404d}.item:hover{background:#253442}.name{flex:1;cursor:pointer;color:#8ecbff;overflow-wrap:anywhere}.muted{color:#9eabb8;font-size:12px}.toolbar{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.crumb{margin:14px 0;color:#8ecbff}.danger{color:#ff9a9a}#msg{display:block;margin-top:10px}input[type=file]{max-width:320px}input[type=checkbox]{width:17px;height:17px}</style></head>"
+"<body><header><b>PLANOS EQUIPAMIENTO</b><nav><a id=\"home\" href=\"/\">Estado</a> &nbsp; <a href=\"/logout\">Salir</a></nav></header><main>"
+"<h2>Repositorio documental de la sala</h2><p class=\"muted\">Los PDF se descargan directamente al PC, sin visor.</p>"
+"<section id=\"adminTools\" hidden><div class=\"toolbar\"><input id=\"file\" type=\"file\" accept=\".pdf,application/pdf\" multiple><button onclick=\"upload()\">Subir PDF</button><button onclick=\"createFolder()\">Nueva carpeta</button><button onclick=\"moveSelected()\">Mover seleccionados</button><button onclick=\"deleteSelected()\">Eliminar seleccionados</button></div></section><section><div class=\"toolbar\"><button onclick=\"refresh()\">Actualizar</button><small id=\"msg\" class=\"muted\"></small></div></section>"
+"<section><div class=\"crumb\" id=\"crumb\"></div><div class=\"toolbar\"><button id=\"back\" onclick=\"up()\">↑ Carpeta anterior</button><label id=\"selectTools\" class=\"muted\" hidden><input id=\"all\" type=\"checkbox\" onchange=\"toggleAll(this.checked)\"> Seleccionar todo</label></div><div id=\"items\">Cargando...</div></section>"
+"</main><script>"
+"const api='/api/planos/';let dir='',items=[],isAdmin=false;const selected=new Set();"
+"const enc=s=>encodeURIComponent(s);const join=(a,b)=>a?a+'/'+b:b;"
+"function msg(s){document.getElementById('msg').textContent=s}"
+"async function request(op,path,method='GET',body){const r=await fetch(api+op+'?path='+enc(path),{method,body});const t=await r.text();if(!r.ok)throw Error(t);return t}"
+"async function refresh(){selected.clear();document.getElementById('all').checked=false;document.getElementById('crumb').textContent='Planos Equipamiento / '+dir;document.getElementById('back').disabled=!dir;const host=document.getElementById('items');host.textContent='Cargando...';try{const r=await fetch(api+'tree?path='+enc(dir));if(!r.ok)throw Error(await r.text());items=await r.json();items.sort((a,b)=>Number(b.dir)-Number(a.dir)||a.name.localeCompare(b.name));host.replaceChildren();if(!items.length){host.textContent='Carpeta vacía';return}for(const x of items){const p=join(dir,x.name),row=document.createElement('div');row.className='item';if(isAdmin){const cb=document.createElement('input');cb.type='checkbox';cb.dataset.path=p;cb.onchange=()=>{if(cb.checked)selected.add(p);else selected.delete(p);syncAll()};row.appendChild(cb)}else{const space=document.createElement('span');space.textContent=x.dir?'📁':'📄';row.appendChild(space)}const name=document.createElement('span');name.className='name';name.textContent=x.name;name.onclick=()=>{if(x.dir){dir=p;refresh()}else location.href=api+'download?path='+enc(p)};row.appendChild(name);const size=document.createElement('span');size.className='muted';size.textContent=x.dir?'Carpeta':Math.round(x.size/1024)+' KB';row.appendChild(size);host.appendChild(row)}}catch(e){host.textContent='Error: '+e.message}}"
+"function up(){if(dir){dir=dir.includes('/')?dir.slice(0,dir.lastIndexOf('/')):'';refresh()}}"
+"function syncAll(){const boxes=[...document.querySelectorAll('#items input[type=checkbox]')];const all=document.getElementById('all');all.checked=boxes.length>0&&boxes.every(c=>c.checked);all.indeterminate=boxes.some(c=>c.checked)&&!all.checked}"
+"function toggleAll(on){selected.clear();document.querySelectorAll('#items input[type=checkbox]').forEach(c=>{c.checked=on;if(on)selected.add(c.dataset.path)});syncAll()}"
+"async function upload(){const files=[...document.getElementById('file').files];if(!files.length){msg('Seleccione PDF');return}for(const f of files){if(!f.name.toLowerCase().endsWith('.pdf')||f.size>33554432){msg('PDF inválido o mayor a 32 MB: '+f.name);return}try{msg('Subiendo '+f.name+'...');await request('upload',join(dir,f.name),'POST',f)}catch(e){msg('Error en '+f.name+': '+e.message);await refresh();return}}msg('PDF cargados correctamente');document.getElementById('file').value='';refresh()}"
+"async function createFolder(){const name=prompt('Nombre de la carpeta nueva:');if(name===null)return;if(!name.trim()||name.includes('/')||name.includes('\\\\')||name.includes('..')){msg('Nombre inválido');return}try{await request('mkdir',join(dir,name.trim()),'POST');msg('Carpeta creada');refresh()}catch(e){msg(e.message)}}"
+"async function moveSelected(){if(!selected.size){msg('Seleccione uno o varios PDF');return}const target=prompt('Carpeta destino relativa a Planos Equipamiento (vacío = raíz):','');if(target===null)return;let to=target.trim().replace(/^\\/+|\\/+$/g,'');if(to.includes('..')||to.includes('\\\\')){msg('Ruta inválida');return}if(!confirm('Mover '+selected.size+' PDF a '+(to||'raíz')+'?'))return;let errors=[];for(const p of selected){const name=p.split('/').pop();try{const r=await fetch(api+'move?from='+enc(p)+'&to='+enc(join(to,name)),{method:'POST'});if(!r.ok)throw Error(await r.text())}catch(e){errors.push(name+': '+e.message)}}msg(errors.length?errors.join(' | '):'Archivos movidos');refresh()}"
+"async function deleteSelected(){if(!isAdmin)return;if(!selected.size){msg('Seleccione archivos o carpetas para eliminar');return}const paths=[...selected];const folders=paths.filter(p=>items.some(x=>x.dir&&join(dir,x.name)===p));const pdfs=paths.length-folders.length;const summary=(pdfs?pdfs+' PDF':'')+(pdfs&&folders.length?' y ':'')+(folders.length?folders.length+' carpeta(s) vacía(s)':'');if(!confirm('¿Eliminar definitivamente '+summary+'?\\nLas carpetas con contenido NO se eliminarán.'))return;let errors=[];for(const p of paths){try{await request('delete',p,'POST')}catch(e){errors.push(p+': '+e.message)}}await refresh();msg(errors.length?'No se pudieron eliminar todos: '+errors.join(' | '):'Elementos eliminados correctamente')}"
+"async function init(){try{const r=await fetch(api+'role',{cache:'no-store'});if(!r.ok)throw Error('No autorizado');const role=await r.json();isAdmin=role.admin===true;document.getElementById('adminTools').hidden=!isAdmin;document.getElementById('selectTools').hidden=!isAdmin;document.getElementById('home').hidden=!isAdmin;await refresh()}catch(e){document.getElementById('items').textContent='Sesión no autorizada';msg(e.message)}}"
+"init();"
+"</script></body></html>"
+;
 static esp_err_t page_g(httpd_req_t *r){if(!access_ok(r))return ESP_OK;httpd_resp_set_type(r,"text/html; charset=utf-8");return httpd_resp_send(r,PAGE,HTTPD_RESP_USE_STRLEN);}
-esp_err_t korvo_planos_register(httpd_handle_t server,bool (*authenticated)(httpd_req_t *)){
+esp_err_t korvo_planos_register(httpd_handle_t server,bool (*authenticated)(httpd_req_t *),bool (*administrator)(httpd_req_t *)){
  s_auth=authenticated;
+ s_admin=administrator;
  const httpd_uri_t routes[]={
   {.uri="/planos",.method=HTTP_GET,.handler=page_g},
   {.uri="/api/planos/tree",.method=HTTP_GET,.handler=tree_g},
+  {.uri="/api/planos/role",.method=HTTP_GET,.handler=role_g},
   {.uri="/api/planos/download",.method=HTTP_GET,.handler=download_g},
   {.uri="/api/planos/upload",.method=HTTP_POST,.handler=upload_p},
   {.uri="/api/planos/mkdir",.method=HTTP_POST,.handler=mkdir_p},
+  {.uri="/api/planos/delete",.method=HTTP_POST,.handler=delete_p},
+  {.uri="/api/planos/move",.method=HTTP_POST,.handler=move_p},
  };
  for(size_t i=0;i<sizeof(routes)/sizeof(routes[0]);i++){
   esp_err_t e=httpd_register_uri_handler(server,&routes[i]);if(e!=ESP_OK){ESP_LOGE(TAG,"No se pudo registrar ruta %u",(unsigned)i);return e;}
