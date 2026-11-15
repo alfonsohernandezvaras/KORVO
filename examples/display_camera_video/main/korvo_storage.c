@@ -67,7 +67,8 @@ static const char *s_required_dirs[] = {
     BSP_SD_MOUNT_POINT "/korvo/sync/processed",
 
     BSP_SD_MOUNT_POINT "/korvo/backup",
-    BSP_SD_MOUNT_POINT "/korvo/temp"
+    BSP_SD_MOUNT_POINT "/korvo/temp",
+    BSP_SD_MOUNT_POINT "/korvo/planos equipamiento" /* KORVO_PLANOS01 */
 };
 
 

@@ -1,5 +1,6 @@
 /* KORVO_HMI_CONSOLIDACION01: indicadores SIP independientes del diagnostico de diccionario. */
 #include "korvo_web.h"
+#include "korvo_planos.h" /* KORVO_PLANOS01 */
 #include "korvo_camera_settings.h"
 #include "korvo_video01.h"
 
@@ -3136,7 +3137,7 @@ esp_err_t korvo_web_start(void)
 
 
 
-    c.max_uri_handlers = 32;
+    c.max_uri_handlers = 40;
 
     c.lru_purge_enable = true;
 
@@ -3428,6 +3429,10 @@ esp_err_t korvo_web_start(void)
 
 
 
+
+    /* KORVO_PLANOS01: solo registrar rutas al final del WebServer existente. */
+    e = korvo_planos_register(s_server, auth);
+    if (e != ESP_OK) { httpd_stop(s_server); s_server = NULL; return e; }
 
     ESP_LOGI(
 

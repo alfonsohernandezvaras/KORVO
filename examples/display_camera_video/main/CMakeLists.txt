@@ -10,6 +10,7 @@ idf_component_register(
         "korvo_gateway.c"
         "korvo_protocol.c"
         "korvo_web.c"
+        "korvo_planos.c"
         "korvo_update.c"
         "korvo_sip.c"
         "korvo_bluetooth.c"
