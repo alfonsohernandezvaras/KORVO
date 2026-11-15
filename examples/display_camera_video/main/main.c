@@ -107,6 +107,59 @@ static uint32_t face_frame_counter = 0;
 static uint16_t face_ai_width = 0;
 static uint16_t face_ai_height = 0;
 
+/* IA04_OCULAR_DIAG: regiones compartidas protegidas por face_ai_mutex.
+ * Diagnostico de contraste y luminancia, NO clasificacion de parpadeo. */
+static face_detection_t ia04_face_roi = {0};
+static TickType_t ia04_roi_tick = 0;
+static uint32_t ia04_frame_counter = 0;
+static int64_t ia04_last_log_us = 0;
+static void ia04_sample_eyes(const uint8_t *buf, uint32_t w, uint32_t h, size_t len)
+{
+    if (!esp_dl_enabled || !buf || w == 0 || h == 0 ||
+        len < (size_t)w * h * 2U || !face_ai_mutex) return;
+    /* Una muestra cada dos callbacks, sin bloquear el pipeline. */
+    if ((++ia04_frame_counter % 2U) != 0U) return;
+    face_detection_t f = {0};
+    TickType_t tick = 0;
+    if (xSemaphoreTake(face_ai_mutex, 0) != pdTRUE) return;
+    f = ia04_face_roi;
+    tick = ia04_roi_tick;
+    xSemaphoreGive(face_ai_mutex);
+    if (!f.eye_roi_valid || tick == 0 ||
+        (xTaskGetTickCount() - tick) > pdMS_TO_TICKS(1200)) return;
+    const int boxes[2][4] = {
+        {f.eye_left_x1,f.eye_left_y1,f.eye_left_x2,f.eye_left_y2},
+        {f.eye_right_x1,f.eye_right_y1,f.eye_right_x2,f.eye_right_y2}
+    };
+    uint32_t mean[2]={0}, contrast[2]={0};
+    for (int k=0;k<2;k++) {
+        const int *b=boxes[k];
+        if (b[0]<0 || b[1]<0 || b[2]>=(int)w || b[3]>=(int)h ||
+            b[0]>=b[2] || b[1]>=b[3]) return;
+        uint32_t sum=0, sumsq=0, n=0;
+        /* Max ~64 puntos por ojo: lectura RGB565BE, luminancia verde aproximada. */
+        int dx=(b[2]-b[0])/8; if(dx<1)dx=1;
+        int dy=(b[3]-b[1])/8; if(dy<1)dy=1;
+        for(int y=b[1];y<b[3];y+=dy) for(int x=b[0];x<b[2];x+=dx) {
+            size_t i=((size_t)y*w+(size_t)x)*2U;
+            uint8_t g=(uint8_t)((((uint16_t)buf[i]<<8)|buf[i+1])>>5)&63U;
+            sum+=g; sumsq+=(uint32_t)g*g; n++;
+        }
+        if(n==0)return;
+        mean[k]=sum/n;
+        contrast[k]=(sumsq/n > mean[k]*mean[k]) ? (sumsq/n-mean[k]*mean[k]) : 0;
+    }
+    int64_t now=esp_timer_get_time();
+    if (now-ia04_last_log_us>=500000LL) {
+        ia04_last_log_us=now;
+        ESP_LOGI("IA04_OCULAR", "L mean=%lu var=%lu R mean=%lu var=%lu ROI_age=%lu ms (DIAGNOSTICO)",
+            (unsigned long)mean[0],(unsigned long)contrast[0],
+            (unsigned long)mean[1],(unsigned long)contrast[1],
+            (unsigned long)((xTaskGetTickCount()-tick)*portTICK_PERIOD_MS));
+    }
+}
+
+
 /* ===== KORVO PRESENCE / WAKE STATE ===== */
 #define FACE_LOST_SLEEP_MS              10000
 
@@ -468,6 +521,9 @@ static void face_detection_task(void *arg)
                                       face_ai_width,
                                       face_ai_height,
                                       &result);
+            /* IA04_OCULAR_DIAG: snapshot atomico del ROI al terminar inferencia. */
+            ia04_face_roi = result;
+            ia04_roi_tick = result.eye_roi_valid ? xTaskGetTickCount() : 0;
             face_ai_pending = false;
             xSemaphoreGive(face_ai_mutex);
 
@@ -596,6 +652,8 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * Copy a periodic camera frame into a dedicated PSRAM buffer.
      * ESP-DL runs in its own task, never inside this video callback.
      */
+    /* IA04_OCULAR_DIAG: analizar antes de copiar frame para ESP-DL. */
+    ia04_sample_eyes(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     face_frame_counter++;
     if (esp_dl_enabled &&
         face_ai_buffer != NULL &&
