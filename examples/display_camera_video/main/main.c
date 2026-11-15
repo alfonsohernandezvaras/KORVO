@@ -160,6 +160,86 @@ static void ia04_sample_eyes(const uint8_t *buf, uint32_t w, uint32_t h, size_t 
 }
 
 
+/* IA05_TEMPORAL_EYES: diagnostico temporal sin autorizacion. */
+/* 8x8 puntos por ojo; diferencias entre frames de camara.
+ * NO detecta parpadeo confirmado, NO valida vida, NO autoriza acceso.
+ * Solo publica una metrica de cambio para calibracion.
+ */
+static uint8_t ia05_prev_eye[2][64];
+static bool ia05_prev_valid = false;
+static int ia05_prev_center_x = 0;
+static int ia05_prev_center_y = 0;
+static int ia05_prev_w = 0;
+static int ia05_prev_h = 0;
+static TickType_t ia05_prev_tick = 0;
+static uint32_t ia05_frames = 0;
+static int64_t ia05_last_log_us = 0;
+static void ia05_sample_temporal(const uint8_t *buf, uint32_t w, uint32_t h, size_t len)
+{
+    if (!esp_dl_enabled || !buf || !w || !h || !face_ai_mutex ||
+        len < (size_t)w*h*2U) { ia05_prev_valid = false; return; }
+    /* Misma cadencia que IA04: cada segundo callback. */
+    if ((++ia05_frames % 2U) != 0U) return;
+    face_detection_t f = {0};
+    TickType_t tick = 0;
+    if (xSemaphoreTake(face_ai_mutex, 0) != pdTRUE) return;
+    f = ia04_face_roi;
+    tick = ia04_roi_tick;
+    xSemaphoreGive(face_ai_mutex);
+    TickType_t now_tick = xTaskGetTickCount();
+    if (!f.eye_roi_valid || !tick || (now_tick-tick)>pdMS_TO_TICKS(900)) {
+        ia05_prev_valid = false;
+        return;
+    }
+    const int boxes[2][4] = {
+        {f.eye_left_x1,f.eye_left_y1,f.eye_left_x2,f.eye_left_y2},
+        {f.eye_right_x1,f.eye_right_y1,f.eye_right_x2,f.eye_right_y2}
+    };
+    uint8_t current[2][64];
+    for (int eye=0;eye<2;eye++) {
+        const int *b=boxes[eye];
+        if (b[0]<0 || b[1]<0 || b[2]>=(int)w || b[3]>=(int)h ||
+            b[2]-b[0]<8 || b[3]-b[1]<8) {
+            ia05_prev_valid=false; return;
+        }
+        for (int y=0;y<8;y++) for(int x=0;x<8;x++) {
+            int sx=b[0]+(x*2+1)*(b[2]-b[0])/16;
+            int sy=b[1]+(y*2+1)*(b[3]-b[1])/16;
+            size_t i=((size_t)sy*w+(size_t)sx)*2U;
+            uint16_t px=((uint16_t)buf[i]<<8)|buf[i+1];
+            current[eye][y*8+x]=(uint8_t)((px>>5)&63U);
+        }
+    }
+    int cx=(f.x1+f.x2)/2, cy=(f.y1+f.y2)/2;
+    int fw=f.x2-f.x1, fh=f.y2-f.y1;
+    /* Evitar comparar ROIs de dos posiciones faciales muy diferentes. */
+    bool moved = abs(cx-ia05_prev_center_x)>12 || abs(cy-ia05_prev_center_y)>12 ||
+                 abs(fw-ia05_prev_w)>18 || abs(fh-ia05_prev_h)>18;
+    bool timely = ia05_prev_tick && (now_tick-ia05_prev_tick)<=pdMS_TO_TICKS(450);
+    uint32_t change[2]={0,0};
+    bool comparable=ia05_prev_valid && !moved && timely;
+    if (comparable) {
+        for(int eye=0;eye<2;eye++) {
+            for(int p=0;p<64;p++) {
+                int d=(int)current[eye][p]-(int)ia05_prev_eye[eye][p];
+                change[eye]+=(uint32_t)(d<0?-d:d);
+            }
+            change[eye]=(change[eye]*100U)/(64U*63U); /* escala 0..100 */
+        }
+    }
+    memcpy(ia05_prev_eye,current,sizeof(current));
+    ia05_prev_valid=true;
+    ia05_prev_center_x=cx; ia05_prev_center_y=cy;
+    ia05_prev_w=fw; ia05_prev_h=fh; ia05_prev_tick=now_tick;
+    int64_t us=esp_timer_get_time();
+    if (us-ia05_last_log_us>=500000LL) {
+        ia05_last_log_us=us;
+        ESP_LOGI("IA05_EYES", "L_delta=%lu R_delta=%lu comparable=%d ROI_age=%lu ms (SIN VALIDACION)",
+            (unsigned long)change[0],(unsigned long)change[1],(int)comparable,
+            (unsigned long)((now_tick-tick)*portTICK_PERIOD_MS));
+    }
+}
+
 /* ===== KORVO PRESENCE / WAKE STATE ===== */
 #define FACE_LOST_SLEEP_MS              10000
 
@@ -654,6 +734,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      */
     /* IA04_OCULAR_DIAG: analizar antes de copiar frame para ESP-DL. */
     ia04_sample_eyes(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+    ia05_sample_temporal(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     face_frame_counter++;
     if (esp_dl_enabled &&
         face_ai_buffer != NULL &&
