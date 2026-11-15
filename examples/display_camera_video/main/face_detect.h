@@ -14,6 +14,10 @@ typedef struct {
     int y1;
     int x2;
     int y2;
+    /* IA03_EYE_ROI: estimaciones geometricas; NO landmarks reales. */
+    bool eye_roi_valid;
+    int eye_left_x1, eye_left_y1, eye_left_x2, eye_left_y2;
+    int eye_right_x1, eye_right_y1, eye_right_x2, eye_right_y2;
 } face_detection_t;
 
 bool face_detect_init(void);

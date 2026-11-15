@@ -60,6 +60,27 @@ extern "C" bool face_detect_run(const uint8_t *rgb565be,
     result->y1 = face.box[1];
     result->x2 = face.box[2];
     result->y2 = face.box[3];
+    /* IA03_EYE_ROI: ROI aproximadas derivadas de la caja facial.
+     * No mide ojos abiertos/cerrados. */
+    const int fw = result->x2 - result->x1;
+    const int fh = result->y2 - result->y1;
+    if (fw >= 48 && fh >= 48) {
+        const int lx1 = result->x1 + fw * 17 / 100;
+        const int lx2 = result->x1 + fw * 46 / 100;
+        const int rx1 = result->x1 + fw * 54 / 100;
+        const int rx2 = result->x1 + fw * 83 / 100;
+        const int y1 = result->y1 + fh * 25 / 100;
+        const int y2 = result->y1 + fh * 48 / 100;
+        if (lx1 >= 0 && lx2 < (int)width && rx1 >= 0 &&
+            rx2 < (int)width && y1 >= 0 && y2 < (int)height &&
+            lx1 < lx2 && rx1 < rx2 && y1 < y2) {
+            result->eye_left_x1=lx1; result->eye_left_y1=y1;
+            result->eye_left_x2=lx2; result->eye_left_y2=y2;
+            result->eye_right_x1=rx1; result->eye_right_y1=y1;
+            result->eye_right_x2=rx2; result->eye_right_y2=y2;
+            result->eye_roi_valid=true;
+        }
+    }
 
     return true;
 }

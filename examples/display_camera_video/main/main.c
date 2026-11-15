@@ -485,6 +485,21 @@ static void face_detection_task(void *arg)
             ESP_LOGI(TAG, "FACE score=%.3f box=[%d,%d,%d,%d]",
                      result.score, result.x1, result.y1,
                      result.x2, result.y2);
+            /* IA03_EYE_ROI: diagnostico limitado a 1 Hz, sin tocar HMI. */
+            static TickType_t ia03_last_log = 0;
+            if ((now - ia03_last_log) >= pdMS_TO_TICKS(1000)) {
+                ia03_last_log = now;
+                if (result.eye_roi_valid) {
+                    ESP_LOGI("IA03_EYES",
+                        "ROI ESTIMADAS L=[%d,%d,%d,%d] R=[%d,%d,%d,%d] (NO parpadeo)",
+                        result.eye_left_x1, result.eye_left_y1,
+                        result.eye_left_x2, result.eye_left_y2,
+                        result.eye_right_x1, result.eye_right_y1,
+                        result.eye_right_x2, result.eye_right_y2);
+                } else {
+                    ESP_LOGI("IA03_EYES", "ROI NO DISPONIBLES");
+                }
+            }
 
             /*
              * Any ESP-DL candidate may wake the LCD, but it starts the
