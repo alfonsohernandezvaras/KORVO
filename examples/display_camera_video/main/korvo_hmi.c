@@ -603,21 +603,22 @@ static void set_face_state(korvo_hmi_face_state_t state)
 
     s_face_state = state;
 
+    /* KORVO_IA01_HMI_DIAG: estados geometricos existentes, sin detector de parpadeo. */
     switch (state) {
     case KORVO_HMI_FACE_NONE:
-        set_message("POSICIONE SU ROSTRO\nEN EL RECUADRO");
+        set_message("POSICIONE SU ROSTRO\nIA: SIN ROSTRO VALIDO");
         break;
 
     case KORVO_HMI_FACE_POSITION:
-        set_message("POSICIONE SU ROSTRO\nEN EL RECUADRO");
+        set_message("AJUSTE SU ROSTRO\nIA: POSICION / TAMANO");
         break;
 
     case KORVO_HMI_FACE_HOLD_STILL:
-        set_message("MANTENGASE QUIETO");
+        set_message("ROSTRO LOCALIZADO\nIA: MIDIENDO ESTABILIDAD");
         break;
 
     case KORVO_HMI_FACE_READY:
-        set_message("ROSTRO LISTO");
+        set_message("ROSTRO DETECTADO\nIA: POSICION ESTABLE");
         break;
 
     default:
