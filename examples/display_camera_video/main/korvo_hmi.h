@@ -17,6 +17,8 @@ typedef enum {
 } korvo_hmi_face_state_t;
 
 void korvo_hmi_init(void);
+/* KORVO_POSTBOOT_FIX01: habilitar indicadores nuevos solo tras boot heredado. */
+void korvo_hmi_postboot_gateway_ui_enable(void);
 void korvo_hmi_sleep(void);
 void korvo_hmi_wake(void);
 void korvo_hmi_update_video_resolution(uint16_t width, uint16_t height);

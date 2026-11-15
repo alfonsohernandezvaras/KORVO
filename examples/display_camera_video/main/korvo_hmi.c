@@ -301,9 +301,22 @@ static lv_obj_t *p19_make_status_label(lv_obj_t *parent, const char *text, int y
     return o;
 }
 
+/* KORVO_POSTBOOT_FIX01: estado de habilitacion separado de LVGL.
+ * El arranque heredado no espera por este indicador. */
+static volatile bool s_postboot_gateway_ui_ready = false;
+
+void korvo_hmi_postboot_gateway_ui_enable(void)
+{
+    s_postboot_gateway_ui_ready = true;
+    ESP_LOGI(TAG, "POSTBOOT_FIX01: Gateway/SIP LVGL habilitado despues del arranque heredado");
+}
+
 static void p19_gateway_sip_timer(lv_timer_t *t)
 {
     (void)t;
+    /* No consultar el estado Gateway antes de korvo_gateway_init().
+     * La llamada inicial era cada 250 ms desde korvo_hmi_init(). */
+    if (!s_postboot_gateway_ui_ready) return;
     static korvo_gateway_status_t gw;
     static int last_ws=-1,last_sip=-1,last_video=-1;
     korvo_gateway_get_status(&gw);
@@ -318,7 +331,8 @@ static void p19_gateway_sip_timer(lv_timer_t *t)
         if(ws!=last_ws)lv_label_set_text(s_v17_gateway,ws?"GW WS: ON":"GW WS: OFF");
     }
     if(s_v17_sip){
-        v17_color(s_v17_sip,(sip && video)?0x0066CC:0x202830);
+        /* KORVO_HMI_CONSOLIDACION03_SIP_VIDEO_INDEPENDIENTE */
+        v17_color(s_v17_sip,sip?0x0066CC:0x202830);
         lv_obj_set_style_text_color(s_v17_sip,lv_color_white(),0);
         lv_label_set_recolor(s_v17_sip,false);
         if(sip!=last_sip || video!=last_video){

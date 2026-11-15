@@ -1315,6 +1315,13 @@ void app_main(void)
         ESP_LOGW(TAG, "TELEMETRY ERROR - network/webserver not ready; telemetry disabled");
     }
 
+    /* KORVO_POSTBOOT_FIX01: no se modifica el orden heredado.
+     * El timer de indicadores nuevos fue creado en LVGL, pero su consulta
+     * Gateway/SIP permanecio deshabilitada durante todo el arranque.
+     * Se habilita al terminar red, Gateway, web, IA y telemetria. */
+    ESP_LOGI(TAG, "POSTBOOT_FIX01: arranque heredado finalizado; habilitando indicadores LVGL");
+    korvo_hmi_postboot_gateway_ui_enable();
+
     /*
      * Do NOT force the screensaver here. Motion owns standby from now on
      * and may activate it only after a complete inactivity interval.
