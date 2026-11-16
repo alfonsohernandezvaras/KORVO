@@ -595,6 +595,23 @@ static void reset_face_track(void)
     s_track.stable_samples = 0;
 }
 
+/* IA07_SCENE01: aviso visual independiente de la matriz geometrica. */
+static bool s_ia07_credential_suspect = false;
+void korvo_hmi_credential_suspect(bool suspect)
+{
+    if (s_ia07_credential_suspect == suspect) return;
+    s_ia07_credential_suspect = suspect;
+    if (suspect) {
+        set_message("POSIBLE FOTO O CREDENCIAL\nIA: ANALISIS EXPERIMENTAL");
+    } else {
+        /* Forzar restauracion del mensaje normal en la proxima muestra facial. */
+        korvo_hmi_face_state_t previous = s_face_state;
+        s_face_state = KORVO_HMI_FACE_NONE;
+        if (previous == KORVO_HMI_FACE_NONE)
+            set_message("POSICIONE SU ROSTRO\nIA: SIN ROSTRO VALIDO");
+    }
+}
+
 static void set_face_state(korvo_hmi_face_state_t state)
 {
     if (s_face_state == state) {
@@ -602,6 +619,7 @@ static void set_face_state(korvo_hmi_face_state_t state)
     }
 
     s_face_state = state;
+    if (s_ia07_credential_suspect) return;
 
     /* KORVO_IA01_HMI_DIAG: estados geometricos existentes, sin detector de parpadeo. */
     switch (state) {

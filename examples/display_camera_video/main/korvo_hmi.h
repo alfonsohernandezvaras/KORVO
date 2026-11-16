@@ -71,6 +71,8 @@ void korvo_hmi_update_gateway_status(const char *room,
                                      bool bt_connected,
                                      const char *bt_peer);
 
+/* IA07_SCENE01: aviso diagnostico de posible credencial, sin autorizacion. */
+void korvo_hmi_credential_suspect(bool suspect);
 korvo_hmi_face_state_t korvo_hmi_face_state(void);
 
 

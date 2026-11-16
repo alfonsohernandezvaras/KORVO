@@ -594,6 +594,9 @@ static void motion_process_rgb565(const uint8_t *camera_buf,
     }
 }
 
+/* IA07_BUILD01: declaracion anticipada para face_detection_task. */
+static volatile bool ia07_suspect;
+
 static void face_detection_task(void *arg)
 {
     ESP_LOGI(TAG, "Starting ESP-DL face detector");
@@ -683,6 +686,8 @@ static void face_detection_task(void *arg)
              */
             /* V07: ROI central fijo; sin tracking grafico. */
             korvo_hmi_update_face(&result, face_ai_width, face_ai_height);
+            /* IA07_SCENE01: solo mensaje de sospecha; no modifica matriz ni acceso. */
+            korvo_hmi_credential_suspect(ia07_suspect);
 
             /*
              * Refresh LCD activity only after the candidate passes the
@@ -730,6 +735,129 @@ static void face_detection_task(void *arg)
 static uint8_t *v17_flip_display_buffer = NULL;
 static size_t v17_flip_display_buffer_size = 0;
 
+/* IA07_SCENE01: diagnostico geometrico/temporal; NO anti-spoof ni autorizacion. */
+#define IA07_W 80
+#define IA07_H 60
+static uint8_t ia07_bg[IA07_W * IA07_H];
+static bool ia07_bg_valid = false;
+static uint8_t ia07_bg_count = 0;
+static uint32_t ia07_frames = 0;
+static int64_t ia07_last_log_us = 0;
+static uint8_t ia07_hits = 0;
+static volatile bool ia07_suspect = false;
+static int64_t ia07_last_face_us = 0;
+
+static uint8_t ia07_luma565(uint16_t p)
+{
+    uint32_t r = ((p >> 11) & 31U) * 255U / 31U;
+    uint32_t g = ((p >> 5) & 63U) * 255U / 63U;
+    uint32_t b = (p & 31U) * 255U / 31U;
+    return (uint8_t)((r * 3U + g * 6U + b) / 10U);
+}
+
+static void ia07_scene_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_t len)
+{
+    if (!buf || !w || !h || len < (size_t)w * h * 2U) return;
+    if ((++ia07_frames % 6U) != 0U) return;
+    const uint16_t *rgb = (const uint16_t *)buf;
+    /* IA07_BOOTSAFE01: buffer persistente, NO en stack de video (4800 bytes). */
+    static uint8_t now[IA07_W * IA07_H];
+    for (int y = 0; y < IA07_H; y++) {
+        uint32_t sy = (uint32_t)y * h / IA07_H;
+        for (int x = 0; x < IA07_W; x++) {
+            uint32_t sx = (uint32_t)x * w / IA07_W;
+            now[y * IA07_W + x] = ia07_luma565(rgb[(size_t)sy * w + sx]);
+        }
+    }
+    const int64_t us = esp_timer_get_time();
+    face_detection_t face = {0};
+    TickType_t roi_tick = 0;
+    if (face_ai_mutex && xSemaphoreTake(face_ai_mutex, 0) == pdTRUE) {
+        face = ia04_face_roi;
+        roi_tick = ia04_roi_tick;
+        xSemaphoreGive(face_ai_mutex);
+    }
+    bool fresh_face = esp_dl_enabled && face.detected && roi_tick &&
+        (xTaskGetTickCount() - roi_tick) <= pdMS_TO_TICKS(900);
+    if (fresh_face) ia07_last_face_us = us;
+    /* Conservar fondo solo si no hay rostro reciente y la escena esta quieta.
+       No se actualiza el fondo cuando ya hay una credencial en seguimiento. */
+    bool background_ok = !fresh_face && !motion_active &&
+        (ia07_last_face_us == 0 || us - ia07_last_face_us > 5000000LL);
+    if (background_ok) {
+        if (!ia07_bg_valid) {
+            memcpy(ia07_bg, now, sizeof(now));
+            ia07_bg_valid = true;
+            ia07_bg_count = 1;
+        } else if (ia07_bg_count < 5) {
+            for (size_t i = 0; i < sizeof(now); i++)
+                ia07_bg[i] = (uint8_t)(((uint16_t)ia07_bg[i] * 3U + now[i]) / 4U);
+            ia07_bg_count++;
+        }
+    }
+    if (!fresh_face || !ia07_bg_valid) {
+        if (!fresh_face) { ia07_hits = 0; ia07_suspect = false; }
+        return;
+    }
+    uint32_t changed = 0;
+    for (size_t i = 0; i < sizeof(now); i++)
+        if (abs((int)now[i] - (int)ia07_bg[i]) >= 24) changed++;
+    uint32_t change_pct = changed * 100U / (IA07_W * IA07_H);
+    /* Buscar bordes verticales/horizontales coherentes en el entorno del rostro.
+       El ROI es una aproximacion: no prueba la presencia de una credencial. */
+    int x1 = face.x1 * IA07_W / (int)w;
+    int x2 = face.x2 * IA07_W / (int)w;
+    int y1 = face.y1 * IA07_H / (int)h;
+    int y2 = face.y2 * IA07_H / (int)h;
+    int fw = x2 - x1, fh = y2 - y1;
+    int left = x1 - fw / 3, right = x2 + fw / 3;
+    int top = y1 - fh / 3, bottom = y2 + fh / 3;
+    if (left < 2) left = 2;
+    if (right > IA07_W - 3) right = IA07_W - 3;
+    if (top < 2) top = 2;
+    if (bottom > IA07_H - 3) bottom = IA07_H - 3;
+    int vertical = 0, horizontal = 0;
+    if (fw > 4 && fh > 4 && right - left >= 8 && bottom - top >= 8) {
+        /* Conteo de filas/columnas con contraste en la periferia de la cara. */
+        for (int y = top; y <= bottom; y++) {
+            int max_l = 0, max_r = 0;
+            for (int x = left; x < x1 && x < IA07_W - 1; x++) {
+                int d = abs((int)now[y * IA07_W + x + 1] - now[y * IA07_W + x]);
+                if (d > max_l) max_l = d;
+            }
+            for (int x = x2; x < right; x++) {
+                int d = abs((int)now[y * IA07_W + x + 1] - now[y * IA07_W + x]);
+                if (d > max_r) max_r = d;
+            }
+            if (max_l >= 42 && max_r >= 42) vertical++;
+        }
+        for (int x = left; x <= right; x++) {
+            int max_t = 0, max_b = 0;
+            for (int y = top; y < y1 && y < IA07_H - 1; y++) {
+                int d = abs((int)now[(y + 1) * IA07_W + x] - now[y * IA07_W + x]);
+                if (d > max_t) max_t = d;
+            }
+            for (int y = y2; y < bottom; y++) {
+                int d = abs((int)now[(y + 1) * IA07_W + x] - now[y * IA07_W + x]);
+                if (d > max_b) max_b = d;
+            }
+            if (max_t >= 42 && max_b >= 42) horizontal++;
+        }
+    }
+    uint32_t vp = (bottom > top) ? (uint32_t)vertical * 100U / (uint32_t)(bottom - top + 1) : 0;
+    uint32_t hp = (right > left) ? (uint32_t)horizontal * 100U / (uint32_t)(right - left + 1) : 0;
+    bool evidence = change_pct >= 5U && change_pct <= 75U && vp >= 45U && hp >= 45U;
+    if (evidence) { if (ia07_hits < 5) ia07_hits++; }
+    else if (ia07_hits) ia07_hits--;
+    ia07_suspect = ia07_hits >= 3U;
+    if (us - ia07_last_log_us >= 1000000LL) {
+        ia07_last_log_us = us;
+        ESP_LOGI("IA07_SCENE", "background_change=%lu%% vertical=%lu%% horizontal=%lu%% hits=%u state=%s (EXPERIMENTAL, NO AUTORIZA)",
+                 (unsigned long)change_pct, (unsigned long)vp, (unsigned long)hp,
+                 (unsigned)ia07_hits, ia07_suspect ? "CREDENCIAL_SOSPECHOSA" : "SIN_INDICIOS");
+    }
+}
+
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
 {
@@ -769,6 +897,11 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     /* IA04_OCULAR_DIAG: analizar antes de copiar frame para ESP-DL. */
     ia04_sample_eyes(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     ia05_sample_temporal(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+    /* IA07_BOOTSAFE01: postergar modulo experimental hasta 15 s de uptime.
+       No bloquear ni modificar watchdog ni pipeline original. */
+    if (esp_timer_get_time() >= 15000000LL) {
+        ia07_scene_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+    }
     face_frame_counter++;
     if (esp_dl_enabled &&
         face_ai_buffer != NULL &&
