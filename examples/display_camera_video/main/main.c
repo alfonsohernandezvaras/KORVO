@@ -95,6 +95,7 @@ static size_t face_ai_buffer_size = 0;
 static SemaphoreHandle_t face_ai_mutex = NULL;
 /* KORVO_AI_SWITCH_R2: control manual independiente de ESP-DL. */
 static volatile bool esp_dl_enabled = true;
+static volatile int ia10_result = 0; /* IA10_VISUAL01 */
 static volatile bool face_ai_pending = false;
 bool korvo_esp_dl_enabled(void) { return esp_dl_enabled; }
 void korvo_esp_dl_set_enabled(bool enabled) {
@@ -687,7 +688,8 @@ static void face_detection_task(void *arg)
             /* V07: ROI central fijo; sin tracking grafico. */
             korvo_hmi_update_face(&result, face_ai_width, face_ai_height);
             /* IA07_SCENE01: solo mensaje de sospecha; no modifica matriz ni acceso. */
-            korvo_hmi_credential_suspect(ia07_suspect);
+            /* IA10_VISUAL01: IA07 permanece diagnostico, no sobrescribe etiqueta. */
+            korvo_hmi_visual_result((int)ia10_result);
 
             /*
              * Refresh LCD activity only after the candidate passes the
@@ -716,6 +718,8 @@ static void face_detection_task(void *arg)
              * Keep the LCD awake for FACE_LOST_SLEEP_MS so the user can
              * reposition without the screen flashing off.
              */
+            ia10_result = 0;
+            korvo_hmi_visual_result(0);
             korvo_hmi_no_face();
 
             if (korvo_awake &&
@@ -986,6 +990,7 @@ static void ia08_silueta_sample(const uint8_t *buf, uint32_t w, uint32_t h, size
 }
 
 #include "ia09_panorama.inc"
+#include "ia10_visual.inc" /* IA10_VISUAL01 */
 
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
@@ -1032,6 +1037,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         ia07_scene_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
         ia08_silueta_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
         ia09_panorama_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+        ia10_visual_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     }
     face_frame_counter++;
     if (esp_dl_enabled &&

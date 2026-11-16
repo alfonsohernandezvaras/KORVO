@@ -612,6 +612,21 @@ void korvo_hmi_credential_suspect(bool suspect)
     }
 }
 
+/* IA10_VISUAL01: la misma etiqueta, sin nuevos objetos LVGL. */
+static int s_ia10_visual_state = 0;
+void korvo_hmi_visual_result(int result)
+{
+    if (result < 0 || result > 3) result = 3;
+    if (s_ia10_visual_state == result) return;
+    s_ia10_visual_state = result;
+    switch (result) {
+    case 1: set_message("ROSTRO HUMANO DETECTADO\nIA: COMPATIBLE / EXPERIMENTAL"); break;
+    case 2: set_message("FOTO DETECTADA\nIA: SOSPECHA / EXPERIMENTAL"); break;
+    case 3: set_message("ANALIZANDO ROSTRO\nIA: COMPARANDO IMAGEN"); break;
+    default: set_message("POSICIONE SU ROSTRO\nIA: SIN ROSTRO VALIDO"); break;
+    }
+}
+
 static void set_face_state(korvo_hmi_face_state_t state)
 {
     if (s_face_state == state) {
@@ -619,6 +634,7 @@ static void set_face_state(korvo_hmi_face_state_t state)
     }
 
     s_face_state = state;
+    if (s_ia10_visual_state != 0) return;
     if (s_ia07_credential_suspect) return;
 
     /* KORVO_IA01_HMI_DIAG: estados geometricos existentes, sin detector de parpadeo. */
@@ -909,6 +925,7 @@ void korvo_hmi_wake(void)
     s_awake = true;
     reset_face_track();
     s_face_state = KORVO_HMI_FACE_POSITION;
+    s_ia10_visual_state = 0;
     set_message("POSICIONE SU ROSTRO\nEN EL RECUADRO");
 }
 

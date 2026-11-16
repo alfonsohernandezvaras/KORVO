@@ -96,3 +96,6 @@ void korvo_hmi_update_gateway_button(bool configured,
 
 /* KORVO_PERF01 */
 void korvo_hmi_perf_frame_mark(int64_t frame_us);
+
+/* IA10_VISUAL01: 0=sin rostro, 1=persona compatible, 2=foto sospechosa, 3=analizando. */
+void korvo_hmi_visual_result(int result);
