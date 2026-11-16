@@ -985,6 +985,8 @@ static void ia08_silueta_sample(const uint8_t *buf, uint32_t w, uint32_t h, size
     }
 }
 
+#include "ia09_panorama.inc"
+
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
 {
@@ -1029,6 +1031,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
     if (esp_timer_get_time() >= 15000000LL) {
         ia07_scene_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
         ia08_silueta_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+        ia09_panorama_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     }
     face_frame_counter++;
     if (esp_dl_enabled &&
