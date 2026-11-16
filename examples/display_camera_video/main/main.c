@@ -858,6 +858,133 @@ static void ia07_scene_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_t
     }
 }
 
+/* IA08_SILUETA01 - Diagnostico experimental. NO autoriza acceso.
+ * Snapshot temporal RAM 80x60; nunca escribe imagen en SD/flash.
+ * Se ejecuta en la misma tarea de camara, sin tareas nuevas.
+ */
+#define IA08_W 80
+#define IA08_H 60
+static uint8_t ia08_background[IA08_W * IA08_H];
+static uint8_t ia08_mask[IA08_W * IA08_H];
+static bool ia08_bg_ready = false;
+static uint8_t ia08_bg_samples = 0;
+static uint32_t ia08_calls = 0;
+static int64_t ia08_last_snapshot_us = 0;
+static int64_t ia08_last_face_us = 0;
+static int64_t ia08_last_report_us = 0;
+
+static void ia08_silueta_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_t len)
+{
+    if (!buf || !w || !h || len < (size_t)w * h * 2U) return;
+    if ((++ia08_calls % 12U) != 0U) return; /* diagnostico liviano */
+    const int64_t now_us = esp_timer_get_time();
+    face_detection_t face = {0};
+    TickType_t roi_tick = 0;
+    if (face_ai_mutex && xSemaphoreTake(face_ai_mutex, 0) == pdTRUE) {
+        face = ia04_face_roi;
+        roi_tick = ia04_roi_tick;
+        xSemaphoreGive(face_ai_mutex);
+    }
+    const bool face_fresh = esp_dl_enabled && face.detected && roi_tick &&
+        (xTaskGetTickCount() - roi_tick) <= pdMS_TO_TICKS(900);
+    if (face_fresh) ia08_last_face_us = now_us;
+    const uint16_t *pixels = (const uint16_t *)buf;
+    /* Tomar referencia solamente con escena sin rostro y sin movimiento.
+       Una vez aparece rostro, el fondo queda congelado. */
+    const bool can_snapshot = !face_fresh && !motion_active &&
+        (ia08_last_face_us == 0 || now_us - ia08_last_face_us > 5000000LL);
+    if (can_snapshot && (now_us - ia08_last_snapshot_us >= 2000000LL)) {
+        ia08_last_snapshot_us = now_us;
+        for (int y = 0; y < IA08_H; ++y) {
+            const uint32_t sy = (uint32_t)y * h / IA08_H;
+            for (int x = 0; x < IA08_W; ++x) {
+                const uint32_t sx = (uint32_t)x * w / IA08_W;
+                const size_t i = (size_t)y * IA08_W + x;
+                const uint8_t v = ia07_luma565(pixels[(size_t)sy * w + sx]);
+                if (!ia08_bg_ready) ia08_background[i] = v;
+                else ia08_background[i] = (uint8_t)(((unsigned)ia08_background[i] * 7U + v) / 8U);
+            }
+        }
+        ia08_bg_ready = true;
+        if (ia08_bg_samples < 255) ++ia08_bg_samples;
+    }
+    if (!face_fresh || !ia08_bg_ready || ia08_bg_samples < 3) return;
+    /* La mascara representa diferencias con el paisaje, no segmentacion semantica. */
+    unsigned changed = 0, outside = 0, outside_changed = 0;
+    int fx1 = face.x1 * IA08_W / (int)w, fx2 = face.x2 * IA08_W / (int)w;
+    int fy1 = face.y1 * IA08_H / (int)h, fy2 = face.y2 * IA08_H / (int)h;
+    if (fx1 < 0) fx1 = 0;
+    if (fy1 < 0) fy1 = 0;
+    if (fx2 >= IA08_W) fx2 = IA08_W - 1;
+    if (fy2 >= IA08_H) fy2 = IA08_H - 1;
+    if (fx2 <= fx1 || fy2 <= fy1) return;
+    for (int y = 0; y < IA08_H; ++y) {
+        const uint32_t sy = (uint32_t)y * h / IA08_H;
+        for (int x = 0; x < IA08_W; ++x) {
+            const uint32_t sx = (uint32_t)x * w / IA08_W;
+            const size_t i = (size_t)y * IA08_W + x;
+            const int delta = abs((int)ia07_luma565(pixels[(size_t)sy * w + sx]) - (int)ia08_background[i]);
+            const uint8_t active = delta >= 28 ? 1U : 0U;
+            ia08_mask[i] = active;
+            changed += active;
+            if (x < fx1 || x > fx2 || y < fy1 || y > fy2) {
+                ++outside;
+                outside_changed += active;
+            }
+        }
+    }
+    /* Buscar la anchura de la silueta en cabeza y zona inferior de hombros.
+       No se presupone que el rostro deba estar centrado. */
+    const int head_y = fy1 + (fy2 - fy1) / 3;
+    int shoulder_y = fy2 + (fy2 - fy1) / 3;
+    if (shoulder_y >= IA08_H) shoulder_y = IA08_H - 1;
+    unsigned head_width = 0, shoulder_width = 0;
+    for (int x = 0; x < IA08_W; ++x) {
+        unsigned hc = 0, sc = 0;
+        for (int dy = -2; dy <= 2; ++dy) {
+            int hy = head_y + dy, sy = shoulder_y + dy;
+            if (hy >= 0 && hy < IA08_H) hc += ia08_mask[hy * IA08_W + x];
+            if (sy >= 0 && sy < IA08_H) sc += ia08_mask[sy * IA08_W + x];
+        }
+        head_width += hc >= 3;
+        shoulder_width += sc >= 3;
+    }
+    /* Medida exploratoria de bordes rectos: filas/columnas con segmentos
+       de mascara de anchura similar, no detector probado de tarjetas. */
+    int minx = IA08_W, maxx = -1, miny = IA08_H, maxy = -1;
+    for (int y = 0; y < IA08_H; ++y) for (int x = 0; x < IA08_W; ++x)
+        if (ia08_mask[y * IA08_W + x]) {
+            if (x < minx) minx = x;
+            if (x > maxx) maxx = x;
+            if (y < miny) miny = y;
+            if (y > maxy) maxy = y;
+        }
+    unsigned bbox_fill = 0;
+    if (maxx >= minx && maxy >= miny) {
+        const unsigned area = (unsigned)(maxx-minx+1) * (unsigned)(maxy-miny+1);
+        bbox_fill = area ? changed * 100U / area : 0;
+        if (bbox_fill > 100U) bbox_fill = 100U;
+    }
+    const unsigned scene_pct = changed * 100U / (IA08_W * IA08_H);
+    const unsigned outside_pct = outside ? outside_changed * 100U / outside : 0;
+    const unsigned shoulders_ratio = head_width ? shoulder_width * 100U / head_width : 0;
+    /* No se usa un umbral aislado para autenticar una persona.
+       Salidas son hipotesis visuales y requieren calibracion con pruebas. */
+    const char *shape = "NO_CONCLUYENTE";
+    if (scene_pct >= 5 && scene_pct <= 85 && head_width >= 6 &&
+        shoulder_y > fy2 && shoulders_ratio >= 135 && bbox_fill < 80)
+        shape = "PERSONA_COMPATIBLE";
+    else if (scene_pct >= 5 && outside_pct >= 25 && bbox_fill >= 75 &&
+             shoulders_ratio < 120)
+        shape = "CREDENCIAL_COMPATIBLE";
+    if (now_us - ia08_last_report_us >= 1000000LL) {
+        ia08_last_report_us = now_us;
+        ESP_LOGI("IA08_SILUETA", "scene=%u%% outside_face=%u%% head_w=%u shoulder_w=%u shoulder_ratio=%u%% bbox_fill=%u%% bg_samples=%u state=%s (EXPERIMENTAL, NO AUTORIZA)",
+                 scene_pct, outside_pct, head_width, shoulder_width, shoulders_ratio,
+                 bbox_fill, ia08_bg_samples, shape);
+    }
+}
+
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
 {
@@ -901,6 +1028,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
        No bloquear ni modificar watchdog ni pipeline original. */
     if (esp_timer_get_time() >= 15000000LL) {
         ia07_scene_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+        ia08_silueta_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     }
     face_frame_counter++;
     if (esp_dl_enabled &&
