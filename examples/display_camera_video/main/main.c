@@ -174,6 +174,39 @@ static int ia05_prev_h = 0;
 static TickType_t ia05_prev_tick = 0;
 static uint32_t ia05_frames = 0;
 static int64_t ia05_last_log_us = 0;
+/* IA06_ACTIVITY_WINDOW: filtro EXPERIMENTAL de actividad facial.
+ * No confirma vida ni distingue una foto movida. NO AUTORIZA ACCESO.
+ * Estadistica sobre deltas IA05 comparables; ninguna accion externa.
+ */
+#define IA06_WINDOW_US 3000000LL
+static int64_t ia06_window_start_us = 0;
+static uint32_t ia06_valid = 0, ia06_events = 0, ia06_bilateral = 0;
+static uint32_t ia06_peak_l = 0, ia06_peak_r = 0;
+static void ia06_update(bool comparable, uint32_t left, uint32_t right)
+{
+    const int64_t now = esp_timer_get_time();
+    if (!ia06_window_start_us) ia06_window_start_us = now;
+    if (comparable) {
+        ia06_valid++;
+        if (left > ia06_peak_l) ia06_peak_l = left;
+        if (right > ia06_peak_r) ia06_peak_r = right;
+        /* Umbrales iniciales diagnosticos, NO calibrados para anti-foto. */
+        if (left >= 3U || right >= 3U) ia06_events++;
+        if (left >= 2U && right >= 1U) ia06_bilateral++;
+    }
+    if (now - ia06_window_start_us >= IA06_WINDOW_US) {
+        const bool activity = ia06_valid >= 5U && ia06_events >= 2U && ia06_bilateral >= 1U;
+        ESP_LOGI("IA06_ACTIVITY", "state=%s valid=%lu events=%lu bilateral=%lu peakL=%lu peakR=%lu (EXPERIMENTAL, NO ANTI-SPOOF, SIN AUTORIZACION)",
+                 activity ? "ACTIVIDAD" : "NO_CONCLUYENTE",
+                 (unsigned long)ia06_valid, (unsigned long)ia06_events,
+                 (unsigned long)ia06_bilateral, (unsigned long)ia06_peak_l,
+                 (unsigned long)ia06_peak_r);
+        ia06_window_start_us = now;
+        ia06_valid = ia06_events = ia06_bilateral = 0;
+        ia06_peak_l = ia06_peak_r = 0;
+    }
+}
+
 static void ia05_sample_temporal(const uint8_t *buf, uint32_t w, uint32_t h, size_t len)
 {
     if (!esp_dl_enabled || !buf || !w || !h || !face_ai_mutex ||
@@ -227,6 +260,7 @@ static void ia05_sample_temporal(const uint8_t *buf, uint32_t w, uint32_t h, siz
             change[eye]=(change[eye]*100U)/(64U*63U); /* escala 0..100 */
         }
     }
+    ia06_update(comparable, change[0], change[1]);
     memcpy(ia05_prev_eye,current,sizeof(current));
     ia05_prev_valid=true;
     ia05_prev_center_x=cx; ia05_prev_center_y=cy;
