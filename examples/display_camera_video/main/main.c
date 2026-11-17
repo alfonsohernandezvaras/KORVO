@@ -96,7 +96,10 @@ static SemaphoreHandle_t face_ai_mutex = NULL;
 /* KORVO_AI_SWITCH_R2: control manual independiente de ESP-DL. */
 static volatile bool esp_dl_enabled = true;
 static volatile int ia10_result = 0; /* IA10_VISUAL01 */
+static volatile int ia08_shape_vote = 0; /* IA11: -1 credencial, +1 persona, 0 no concluyente */
 static volatile bool face_ai_pending = false;
+static volatile int ia11_result = 3;
+static void ia11_reset(void);
 bool korvo_esp_dl_enabled(void) { return esp_dl_enabled; }
 void korvo_esp_dl_set_enabled(bool enabled) {
     esp_dl_enabled = enabled;
@@ -688,8 +691,8 @@ static void face_detection_task(void *arg)
             /* V07: ROI central fijo; sin tracking grafico. */
             korvo_hmi_update_face(&result, face_ai_width, face_ai_height);
             /* IA07_SCENE01: solo mensaje de sospecha; no modifica matriz ni acceso. */
-            /* IA10_VISUAL01: IA07 permanece diagnostico, no sobrescribe etiqueta. */
-            korvo_hmi_visual_result((int)ia10_result);
+            /* IA11: la etiqueta proviene de la consolidacion, no de IA10 aislada. */
+            korvo_hmi_visual_result((int)ia11_result);
 
             /*
              * Refresh LCD activity only after the candidate passes the
@@ -719,6 +722,7 @@ static void face_detection_task(void *arg)
              * reposition without the screen flashing off.
              */
             ia10_result = 0;
+            ia11_reset();
             korvo_hmi_visual_result(0);
             korvo_hmi_no_face();
 
@@ -981,6 +985,7 @@ static void ia08_silueta_sample(const uint8_t *buf, uint32_t w, uint32_t h, size
     else if (scene_pct >= 5 && outside_pct >= 25 && bbox_fill >= 75 &&
              shoulders_ratio < 120)
         shape = "CREDENCIAL_COMPATIBLE";
+    ia08_shape_vote = (shape[0] == 'P') ? 1 : ((shape[0] == 'C') ? -1 : 0);
     if (now_us - ia08_last_report_us >= 1000000LL) {
         ia08_last_report_us = now_us;
         ESP_LOGI("IA08_SILUETA", "scene=%u%% outside_face=%u%% head_w=%u shoulder_w=%u shoulder_ratio=%u%% bbox_fill=%u%% bg_samples=%u state=%s (EXPERIMENTAL, NO AUTORIZA)",
@@ -991,6 +996,7 @@ static void ia08_silueta_sample(const uint8_t *buf, uint32_t w, uint32_t h, size
 
 #include "ia09_panorama.inc"
 #include "ia10_visual.inc" /* IA10_VISUAL01 */
+#include "ia11_consolidacion.inc" /* IA11_CONSOLIDACION01 */
 
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
         uint32_t camera_buf_ves, size_t camera_buf_len)
@@ -1038,6 +1044,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
         ia08_silueta_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
         ia09_panorama_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
         ia10_visual_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+        ia11_sample(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     }
     face_frame_counter++;
     if (esp_dl_enabled &&
