@@ -605,49 +605,96 @@ static volatile bool ia07_suspect;
 /* FR01: small independent snapshot, never wait for detector inference. */
 static portMUX_TYPE fr01_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool fr01_enabled = false;
-static face_detection_t fr01_face;
 static uint16_t fr01_w, fr01_h;
 static TickType_t fr01_tick;
+/* FR01C: decorative mesh in a separate ARGB8888 LVGL canvas.
+ * Geometry is prepared by the existing CPU1 face task; LVGL owns rendering. */
+#define FR01C_N 24
+static lv_obj_t *fr01c_canvas;
+static uint32_t *fr01c_pixels;
+static int16_t fr01c_xy[FR01C_N][2];
+static uint32_t fr01c_seq;
+static bool fr01c_valid;
+static const uint8_t fr01c_template[FR01C_N][2] = {
+ {50,4},{25,12},{75,12},{10,30},{90,30},{8,51},{92,51},
+ {16,72},{84,72},{30,89},{70,89},{50,98},
+ {29,40},{71,40},{50,32},{50,57},{35,68},{65,68},
+ {50,79},{29,25},{71,25},{23,56},{77,56},{50,16}
+};
+static const uint8_t fr01c_edges[][2] = {
+ {0,1},{0,2},{1,3},{2,4},{3,5},{4,6},{5,7},{6,8},{7,9},{8,10},{9,11},{10,11},
+ {1,19},{2,20},{0,23},{1,23},{2,23},{19,23},{20,23},{19,14},{20,14},{23,14},
+ {3,19},{4,20},{3,12},{4,13},{19,12},{20,13},{12,14},{13,14},{12,15},{13,15},{14,15},
+ {5,12},{6,13},{5,21},{6,22},{12,21},{13,22},{21,15},{22,15},{21,7},{22,8},
+ {21,16},{22,17},{15,16},{15,17},{16,18},{17,18},{16,17},{7,16},{8,17},{9,16},{10,17},{9,18},{10,18},{11,18}
+};
 static void fr01_publish(const face_detection_t *f, uint16_t w, uint16_t h)
 {
-    TickType_t now = xTaskGetTickCount();
+    int16_t xy[FR01C_N][2] = {{0}};
+    bool valid=f->detected && w && h && f->x2>f->x1 && f->y2>f->y1;
+    if(valid) {
+        int l=(int)((int64_t)(w-1-f->x2)*400/w), r=(int)((int64_t)(w-1-f->x1)*400/w);
+        int t=(int)((int64_t)(h-1-f->y2)*300/h), d=(int)((int64_t)(h-1-f->y1)*300/h);
+        for(int i=0;i<FR01C_N;i++) {
+            int px=fr01c_template[i][0], py=fr01c_template[i][1];
+            /* FR01D: expand only the twelve perimeter nodes around the center. */
+            int sx=i<12?115:100, sy=i<12?110:100;
+            int x=l+(r-l)*(5000+(px-50)*sx)/10000;
+            int y=t+(d-t)*(5000+(py-50)*sy)/10000;
+            xy[i][0]=x<0?0:x>399?399:x; xy[i][1]=y<0?0:y>299?299:y;
+        }
+    }
+    TickType_t now=xTaskGetTickCount();
     portENTER_CRITICAL(&fr01_lock);
-    if (fr01_enabled) { fr01_face = *f; fr01_w = w; fr01_h = h; fr01_tick = now; }
+    if(fr01_enabled) {
+        bool smooth=valid && fr01c_valid && fr01_w==w && fr01_h==h && (now-fr01_tick)<pdMS_TO_TICKS(750);
+        for(int i=0;i<FR01C_N;i++) for(int j=0;j<2;j++) fr01c_xy[i][j]=smooth?(fr01c_xy[i][j]+2*xy[i][j])/3:xy[i][j];
+        fr01c_valid=valid; fr01_w=w; fr01_h=h; fr01_tick=now; ++fr01c_seq;
+    }
     portEXIT_CRITICAL(&fr01_lock);
 }
-static int fr01_clamp(int v, int max) { return v < 0 ? 0 : (v > max ? max : v); }
-static int fr01_x(int x, int w) { return fr01_clamp((w-1-fr01_clamp(x,w-1))*400/w,399); }
-static int fr01_y(int y, int h) { return fr01_clamp((h-1-fr01_clamp(y,h-1))*300/h,299); }
-static void fr01_pixel(uint8_t *b, int x, int y, uint16_t c)
-{
-    if ((unsigned)x >= 400U || (unsigned)y >= 300U) return;
-    size_t i = ((size_t)y*400U+(unsigned)x)*2U;
-    b[i] = (uint8_t)(c>>8); b[i+1] = (uint8_t)c;
+static void fr01c_pixel(int x,int y,uint32_t c) {
+    if((unsigned)x<400U && (unsigned)y<300U) fr01c_pixels[y*400+x]=c;
 }
-static void fr01_rect(uint8_t *b,int x1,int y1,int x2,int y2,int w,int h,uint16_t c)
-{
-    if (x1>=x2 || y1>=y2) return;
-    int l=fr01_x(x2,w), r=fr01_x(x1,w), t=fr01_y(y2,h), d=fr01_y(y1,h);
-    for(int x=l;x<=r;x++) { fr01_pixel(b,x,t,c); fr01_pixel(b,x,d,c); }
-    for(int y=t;y<=d;y++) { fr01_pixel(b,l,y,c); fr01_pixel(b,r,y,c); }
+static void fr01c_line(int x,int y,int x2,int y2) {
+    int dx=x2>x?x2-x:x-x2, dy=y2>y?y-y2:y2-y;
+    int sx=x<x2?1:-1, sy=y<y2?1:-1, err=dx+dy;
+    for(;;) { fr01c_pixel(x,y,0x88A8FFB8U); if(x==x2 && y==y2) break;
+        int e=2*err; if(e>=dy){err+=dy;x+=sx;} if(e<=dx){err+=dx;y+=sy;} }
 }
-static void fr01_draw(uint8_t *b, uint32_t w, uint32_t h)
-{
-    face_detection_t f; uint16_t sw,sh; TickType_t tick; bool enabled;
+/* Called only with BSP display lock held, after original boot. */
+static void fr01c_render(void) {
+    static uint32_t shown; static bool visible;
+    int16_t xy[FR01C_N][2]; uint32_t seq; bool valid; TickType_t tick;
     portENTER_CRITICAL(&fr01_lock);
-    enabled=fr01_enabled; f=fr01_face; sw=fr01_w; sh=fr01_h; tick=fr01_tick;
+    valid=fr01_enabled && fr01c_valid; tick=fr01_tick; seq=fr01c_seq;
+    memcpy(xy,fr01c_xy,sizeof(xy));
     portEXIT_CRITICAL(&fr01_lock);
-    if (!enabled || !esp_dl_enabled || !f.detected || !sw || !sh || sw!=w || sh!=h ||
-        (xTaskGetTickCount()-tick)>pdMS_TO_TICKS(750)) return;
-    fr01_rect(b,f.x1,f.y1,f.x2,f.y2,sw,sh,0x07E0);
-    if(f.eye_roi_valid) {
-        fr01_rect(b,f.eye_left_x1,f.eye_left_y1,f.eye_left_x2,f.eye_left_y2,sw,sh,0x07FF);
-        fr01_rect(b,f.eye_right_x1,f.eye_right_y1,f.eye_right_x2,f.eye_right_y2,sw,sh,0x07FF);
+    if(!fr01c_canvas) return;
+    valid=valid && esp_dl_enabled && (xTaskGetTickCount()-tick)<=pdMS_TO_TICKS(750);
+    if(!valid) { if(visible) lv_obj_add_flag(fr01c_canvas,LV_OBJ_FLAG_HIDDEN); visible=false; return; }
+    if(visible && shown==seq) return;
+    memset(fr01c_pixels,0,400U*300U*4U);
+    for(unsigned i=0;i<sizeof(fr01c_edges)/sizeof(fr01c_edges[0]);i++) {
+        unsigned a=fr01c_edges[i][0],b=fr01c_edges[i][1]; fr01c_line(xy[a][0],xy[a][1],xy[b][0],xy[b][1]);
     }
-    if(f.fr01_points_valid) for(int i=0;i<10;i+=2) {
-        int x=fr01_x(f.fr01_points[i],sw), y=fr01_y(f.fr01_points[i+1],sh);
-        for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) fr01_pixel(b,x+dx,y+dy,0xFFE0);
+    for(int i=0;i<FR01C_N;i++) { int x=xy[i][0],y=xy[i][1];
+        fr01c_pixel(x,y,0xF0D0FFD8U); fr01c_pixel(x+1,y,0xB0D0FFD8U); fr01c_pixel(x,y+1,0xB0D0FFD8U); }
+    lv_obj_remove_flag(fr01c_canvas,LV_OBJ_FLAG_HIDDEN); lv_obj_invalidate(fr01c_canvas); shown=seq; visible=true;
+}
+static void fr01c_init(void) {
+    fr01c_pixels=heap_caps_calloc(400U*300U,4,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    if(!fr01c_pixels) { ESP_LOGW(TAG,"FR01C no PSRAM; overlay disabled"); return; }
+    bsp_display_lock(0);
+    fr01c_canvas=lv_canvas_create(camera_canvas);
+    if(fr01c_canvas) {
+        lv_canvas_set_buffer(fr01c_canvas,fr01c_pixels,400,300,LV_COLOR_FORMAT_ARGB8888);
+        lv_obj_set_pos(fr01c_canvas,0,0);
+        lv_obj_remove_flag(fr01c_canvas,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(fr01c_canvas,LV_OBJ_FLAG_HIDDEN);
     }
+    bsp_display_unlock();
+    if(!fr01c_canvas) { heap_caps_free(fr01c_pixels); fr01c_pixels=NULL; }
 }
 
 static void face_detection_task(void *arg)
@@ -1181,11 +1228,11 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
             dst[2U*x+1U] = src[sx+1U];
         }
     }
-    fr01_draw(v17_flip_display_buffer, camera_buf_hes, camera_buf_ves);
     out_buf = v17_flip_display_buffer;
     out_w = 400U; out_h = 300U;
     bsp_display_lock(0);
     lv_canvas_set_buffer(camera_canvas, out_buf, out_w, out_h, lvgl_cam_rgb565_fmt);
+    fr01c_render();
     /* KORVO_VIDEO14_HMI_CENTER_QVGA: center 320x240 within 400x300 viewport. */
     /* KORVO_VIDEO15_SCALE_125: 320x240 source displayed at 400x300. */
     /* Scale and position configured once at canvas initialization. */
@@ -1846,10 +1893,11 @@ void app_main(void)
      * Se habilita al terminar red, Gateway, web, IA y telemetria. */
     ESP_LOGI(TAG, "POSTBOOT_FIX01: arranque heredado finalizado; habilitando indicadores LVGL");
     korvo_hmi_postboot_gateway_ui_enable();
+    fr01c_init();
     portENTER_CRITICAL(&fr01_lock);
     fr01_enabled = true;
     portEXIT_CRITICAL(&fr01_lock);
-    ESP_LOGI(TAG, "FR01 overlay enabled after boot");
+    ESP_LOGI(TAG, "FR01C decorative overlay initialized after boot");
 
     /*
      * Do NOT force the screensaver here. Motion owns standby from now on
