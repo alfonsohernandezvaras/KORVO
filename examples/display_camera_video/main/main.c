@@ -1894,6 +1894,8 @@ void app_main(void)
     ESP_LOGI(TAG, "POSTBOOT_FIX01: arranque heredado finalizado; habilitando indicadores LVGL");
     korvo_hmi_postboot_gateway_ui_enable();
     fr01c_init();
+    extern void fr02a_enable(void);
+    fr02a_enable();
     portENTER_CRITICAL(&fr01_lock);
     fr01_enabled = true;
     portEXIT_CRITICAL(&fr01_lock);
