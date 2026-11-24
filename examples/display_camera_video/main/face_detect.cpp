@@ -29,6 +29,8 @@ extern "C" bool face_detect_run(const uint8_t *rgb565be,
     }
 
     result->detected = false;
+    result->eye_roi_valid = false;
+    result->fr01_points_valid = false;
     result->score = 0.0f;
     result->x1 = result->y1 = result->x2 = result->y2 = 0;
 
@@ -56,6 +58,15 @@ extern "C" bool face_detect_run(const uint8_t *rgb565be,
 
     result->detected = true;
     result->score = face.score;
+    if (face.keypoint.size() == 10) {
+        bool valid = true;
+        for (int i=0; i<10; ++i) {
+            const int p = face.keypoint[i];
+            result->fr01_points[i] = p;
+            if (p < 0 || p >= ((i % 2) ? height : width)) valid = false;
+        }
+        result->fr01_points_valid = valid;
+    }
     result->x1 = face.box[0];
     result->y1 = face.box[1];
     result->x2 = face.box[2];

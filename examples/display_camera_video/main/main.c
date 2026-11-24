@@ -601,6 +601,55 @@ static void motion_process_rgb565(const uint8_t *camera_buf,
 /* IA07_BUILD01: declaracion anticipada para face_detection_task. */
 static volatile bool ia07_suspect;
 
+
+/* FR01: small independent snapshot, never wait for detector inference. */
+static portMUX_TYPE fr01_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool fr01_enabled = false;
+static face_detection_t fr01_face;
+static uint16_t fr01_w, fr01_h;
+static TickType_t fr01_tick;
+static void fr01_publish(const face_detection_t *f, uint16_t w, uint16_t h)
+{
+    TickType_t now = xTaskGetTickCount();
+    portENTER_CRITICAL(&fr01_lock);
+    if (fr01_enabled) { fr01_face = *f; fr01_w = w; fr01_h = h; fr01_tick = now; }
+    portEXIT_CRITICAL(&fr01_lock);
+}
+static int fr01_clamp(int v, int max) { return v < 0 ? 0 : (v > max ? max : v); }
+static int fr01_x(int x, int w) { return fr01_clamp((w-1-fr01_clamp(x,w-1))*400/w,399); }
+static int fr01_y(int y, int h) { return fr01_clamp((h-1-fr01_clamp(y,h-1))*300/h,299); }
+static void fr01_pixel(uint8_t *b, int x, int y, uint16_t c)
+{
+    if ((unsigned)x >= 400U || (unsigned)y >= 300U) return;
+    size_t i = ((size_t)y*400U+(unsigned)x)*2U;
+    b[i] = (uint8_t)(c>>8); b[i+1] = (uint8_t)c;
+}
+static void fr01_rect(uint8_t *b,int x1,int y1,int x2,int y2,int w,int h,uint16_t c)
+{
+    if (x1>=x2 || y1>=y2) return;
+    int l=fr01_x(x2,w), r=fr01_x(x1,w), t=fr01_y(y2,h), d=fr01_y(y1,h);
+    for(int x=l;x<=r;x++) { fr01_pixel(b,x,t,c); fr01_pixel(b,x,d,c); }
+    for(int y=t;y<=d;y++) { fr01_pixel(b,l,y,c); fr01_pixel(b,r,y,c); }
+}
+static void fr01_draw(uint8_t *b, uint32_t w, uint32_t h)
+{
+    face_detection_t f; uint16_t sw,sh; TickType_t tick; bool enabled;
+    portENTER_CRITICAL(&fr01_lock);
+    enabled=fr01_enabled; f=fr01_face; sw=fr01_w; sh=fr01_h; tick=fr01_tick;
+    portEXIT_CRITICAL(&fr01_lock);
+    if (!enabled || !esp_dl_enabled || !f.detected || !sw || !sh || sw!=w || sh!=h ||
+        (xTaskGetTickCount()-tick)>pdMS_TO_TICKS(750)) return;
+    fr01_rect(b,f.x1,f.y1,f.x2,f.y2,sw,sh,0x07E0);
+    if(f.eye_roi_valid) {
+        fr01_rect(b,f.eye_left_x1,f.eye_left_y1,f.eye_left_x2,f.eye_left_y2,sw,sh,0x07FF);
+        fr01_rect(b,f.eye_right_x1,f.eye_right_y1,f.eye_right_x2,f.eye_right_y2,sw,sh,0x07FF);
+    }
+    if(f.fr01_points_valid) for(int i=0;i<10;i+=2) {
+        int x=fr01_x(f.fr01_points[i],sw), y=fr01_y(f.fr01_points[i+1],sh);
+        for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) fr01_pixel(b,x+dx,y+dy,0xFFE0);
+    }
+}
+
 static void face_detection_task(void *arg)
 {
     ESP_LOGI(TAG, "Starting ESP-DL face detector");
@@ -643,6 +692,7 @@ static void face_detection_task(void *arg)
                                       face_ai_height,
                                       &result);
             /* IA04_OCULAR_DIAG: snapshot atomico del ROI al terminar inferencia. */
+            fr01_publish(&result, face_ai_width, face_ai_height);
             ia04_face_roi = result;
             ia04_roi_tick = result.detected ? xTaskGetTickCount() : 0;
             face_ai_pending = false;
@@ -1131,6 +1181,7 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
             dst[2U*x+1U] = src[sx+1U];
         }
     }
+    fr01_draw(v17_flip_display_buffer, camera_buf_hes, camera_buf_ves);
     out_buf = v17_flip_display_buffer;
     out_w = 400U; out_h = 300U;
     bsp_display_lock(0);
@@ -1795,6 +1846,10 @@ void app_main(void)
      * Se habilita al terminar red, Gateway, web, IA y telemetria. */
     ESP_LOGI(TAG, "POSTBOOT_FIX01: arranque heredado finalizado; habilitando indicadores LVGL");
     korvo_hmi_postboot_gateway_ui_enable();
+    portENTER_CRITICAL(&fr01_lock);
+    fr01_enabled = true;
+    portEXIT_CRITICAL(&fr01_lock);
+    ESP_LOGI(TAG, "FR01 overlay enabled after boot");
 
     /*
      * Do NOT force the screensaver here. Motion owns standby from now on
