@@ -616,12 +616,17 @@ void korvo_hmi_credential_suspect(bool suspect)
 static int s_ia10_visual_state = 0;
 void korvo_hmi_visual_result(int result)
 {
-    if (result < 0 || result > 3) result = 3;
+    if (result < 0 || result > 8) result = 3;
     if (s_ia10_visual_state == result) return;
     s_ia10_visual_state = result;
     switch (result) {
-    case 1: set_message("ROSTRO HUMANO DETECTADO\nIA: COMPATIBLE / EXPERIMENTAL"); break;
-    case 2: set_message("FOTO DETECTADA\nIA: SOSPECHA / EXPERIMENTAL"); break;
+    case 1: set_message("ROSTRO HUMANO DETECTADO\nCAPTURAS 5/5 - REVISAR SD"); break;
+    case 2: set_message("CREDENCIAL DETECTADA\nCAPTURAS 5/5 - REVISAR SD"); break;
+    case 4: set_message("ROSTRO DETECTADO - NO SE MUEVA\nFLASH 1/5"); break;
+    case 5: set_message("ROSTRO DETECTADO - NO SE MUEVA\nFLASH 2/5"); break;
+    case 6: set_message("ROSTRO DETECTADO - NO SE MUEVA\nFLASH 3/5"); break;
+    case 7: set_message("ROSTRO DETECTADO - NO SE MUEVA\nFLASH 4/5"); break;
+    case 8: set_message("ROSTRO DETECTADO - NO SE MUEVA\nFLASH 5/5"); break;
     case 3: set_message("ANALIZANDO ROSTRO\nIA: COMPARANDO IMAGEN"); break;
     default: set_message("POSICIONE SU ROSTRO\nIA: SIN ROSTRO VALIDO"); break;
     }

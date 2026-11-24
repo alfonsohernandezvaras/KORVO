@@ -644,7 +644,7 @@ static void face_detection_task(void *arg)
                                       &result);
             /* IA04_OCULAR_DIAG: snapshot atomico del ROI al terminar inferencia. */
             ia04_face_roi = result;
-            ia04_roi_tick = result.eye_roi_valid ? xTaskGetTickCount() : 0;
+            ia04_roi_tick = result.detected ? xTaskGetTickCount() : 0;
             face_ai_pending = false;
             xSemaphoreGive(face_ai_mutex);
 
@@ -996,6 +996,7 @@ static void ia08_silueta_sample(const uint8_t *buf, uint32_t w, uint32_t h, size
 
 #include "ia09_panorama.inc"
 #include "ia10_visual.inc" /* IA10_VISUAL01 */
+#include "ia12_capture.inc" /* IA12_CIERRE01 */
 #include "ia11_consolidacion.inc" /* IA11_CONSOLIDACION01 */
 
 static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf_index, uint32_t camera_buf_hes,
@@ -1460,6 +1461,7 @@ void app_main(void)
         return;
     }
 
+    ia12_init(); /* IA12: SD writer, nonblocking camera callback */
     face_ai_mutex = xSemaphoreCreateMutex();
     if (face_ai_mutex == NULL) {
         ESP_LOGE(TAG, "Failed to create face AI mutex");
