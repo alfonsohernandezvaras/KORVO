@@ -7,7 +7,8 @@ dependencies:
   espressif/esp-dl: '*'
   espressif/human_face_detect: '*'
   espressif/esp_websocket_client:
-    version: '^1.8.0'
+    version: ^1.8.0
   espressif/cjson:
-    version: '^1.7.19'
-  usb_host_hid: '^1'
+    version: ^1.7.19
+  usb_host_hid: ^1
+  espressif/human_face_recognition: =0.3.3

@@ -4,6 +4,32 @@ All notable changes to this component will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-11-13
+
+### Added
+
+- Added public API for resetting host channel data toggle. This is used together with ClearFeature(ENDPOINT_HALT) request from class drivers during device's EP recovery.
+
+### Fixed
+
+- Fixed a device object and HCD channel leak when the enumeration filter rejects a device connected through an external hub (https://github.com/espressif/esp-usb/pull/590).
+- Fixed possible OOB read during string descriptor print
+- Fixed an assertion in `_buffer_parse()` when a channel error interrupt arrives with no buffer executing, seen on device disconnect on ESP32-P4
+- Fixed an assertion in `device_release()` when an external Hub is disconnected while one of its control transfers is in flight
+
+## [1.6.0] - 2026-10-05
+
+### Added
+
+- Added DWC2 internal DMA access to the external RAM for ESP32-S31. The option already exists for the ESP32-P4, extending it for the ESP32-S31. The option is configurable via Kconfig.
+- Added `usb_host_config_t.fsls_only` so High-Speed USB-OTG peripherals can operate as Full/Low-Speed only hosts. Set this field when calling `usb_host_install()`.
+- Added check for maximum transfer size, per transfer type, when enqueuing an URB
+
+### Fixed
+
+- Fixed cache sync for IN data buffer for transfer lengths nearing to the transfer limits
+- Fixed a race that could trigger an assertion when closing a device immediately after its control transfer completion callback.
+
 ## [1.5.0] - 2026-06-16
 
 ### Changed

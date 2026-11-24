@@ -492,9 +492,20 @@ static void enum_event_callback(enum_event_data_t *event_data, void *arg)
         // Propagate a new device event
         ESP_ERROR_CHECK(usbh_devs_new_dev_event(event_data->dev_hdl));
         break;
-    case ENUM_EVENT_CANCELED:
-        hub_node_disable(event_data->node_uid);
+    case ENUM_EVENT_CANCELED: {
+        esp_err_t ret = hub_node_disable(event_data->node_uid);
+        // Filter rejected devices are not visible to users, so remove their device object after disabling the port.
+        if (event_data->cancel_reason == ENUM_CANCEL_REASON_FILTER_REJECTED) {
+            if (ret != ESP_OK && ret != ESP_ERR_NOT_FOUND) {
+                ESP_LOGE(USB_HOST_TAG, "Hub node disable after enum filter reject failed: %s", esp_err_to_name(ret));
+            }
+            ret = usbh_devs_remove(event_data->node_uid);
+            if (ret != ESP_OK && ret != ESP_ERR_NOT_FOUND) {
+                ESP_LOGE(USB_HOST_TAG, "USBH device remove after enum filter reject failed: %s", esp_err_to_name(ret));
+            }
+        }
         break;
+    }
     default:
         abort();    // Should never occur
         break;
@@ -762,6 +773,7 @@ esp_err_t usb_host_install(const usb_host_config_t *config)
         .event_cb_arg = NULL,
         .intr_flags = config->intr_flags,
         .fifo_config = NULL,
+        .fsls_only = config->fsls_only,
     };
 
     // Check if user has provided a custom FIFO configuration (not used for multi-port)
@@ -1926,6 +1938,25 @@ esp_err_t usb_host_endpoint_clear(usb_device_handle_t dev_hdl, uint8_t bEndpoint
         goto exit;
     }
     ret = usbh_ep_command(ep_hdl, USBH_EP_CMD_CLEAR);
+    if (ret != ESP_OK) {
+        print_error_ep_command(ret);
+    }
+
+exit:
+    return ret;
+}
+
+esp_err_t usb_host_endpoint_reset_data_toggle(usb_device_handle_t dev_hdl, uint8_t bEndpointAddress)
+{
+    esp_err_t ret;
+    usbh_ep_handle_t ep_hdl;
+
+    ret = usbh_ep_get_handle(dev_hdl, bEndpointAddress, &ep_hdl);
+    if (ret != ESP_OK) {
+        print_error_ep_get_handle(ret);
+        goto exit;
+    }
+    ret = usbh_ep_command(ep_hdl, USBH_EP_CMD_RESET_DATA_TOGGLE);
     if (ret != ESP_OK) {
         print_error_ep_command(ret);
     }

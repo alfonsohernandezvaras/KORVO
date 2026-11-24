@@ -1,3 +1,17 @@
+## 3.1.1
+
+- RMT runtime GPIO switching calls `rmt_tx_switch_gpio()` only on ESP-IDF v5.4.2 and later. Others still build, and `led_strip_switch_gpio()` returns `ESP_ERR_NOT_SUPPORTED`. (espressif/idf-extra-components#881)
+
+## 3.1.0
+
+- Add async refresh API: `led_strip_refresh_async()` and `led_strip_refresh_async_done()`. Note that the driver has no double buffer yet, so the pixel buffer still has to be swapped manually between frames; the async API mainly allows the wait to be deferred.
+- Support to use custom timing config in RMT backend
+- Support to switch GPIO at runtime in RMT backend
+- SPI backend uses official `SPICOMMON_BUSFLAG_DATA_OUT_INV`, older IDF keeps the GPIO-matrix fallback.
+- Fix IDF 6.1 build by explicitly including `freertos/FreeRTOS.h` and `freertos/task.h` in the SPI backend (espressif/idf-extra-components#870)
+- Fix WS2812 and SK6812 default timings to comply with their datasheet minimum T1H/T1L requirements. (espressif/idf-extra-components#816)
+- Drop support for ESP-IDF v5.0 and v5.1
+
 ## 3.0.3
 
 - Support WS2816 with 16-bit color

@@ -304,7 +304,7 @@ static esp_err_t dev_tree_node_dev_gone(ext_hub_handle_t parent, uint8_t port_nu
     }
 
     if (dev_tree_node == NULL) {
-        ESP_LOGW(HUB_DRIVER_TAG, "Device tree node (port %d): not found", port_num);
+        ESP_LOGD(HUB_DRIVER_TAG, "Device tree node (port %d): not found on device gone", port_num);
         return ESP_ERR_NOT_FOUND;
     }
 
@@ -772,6 +772,7 @@ esp_err_t hub_install(hub_config_t *hub_config, void **client_ret)
                 .context = root_hub_port,
                 .intr_flags = hub_config->intr_flags,
                 .fifo_config = hub_config->fifo_config,
+                .fsls_only = hub_config->fsls_only,
             };
             ret = hcd_port_init(i, &port_config, &root_hub_port->constant.hdl);
             if (ret != ESP_OK) {

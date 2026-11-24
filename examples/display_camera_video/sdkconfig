@@ -4841,46 +4841,6 @@ CONFIG_CU_DIAGNOSTICS_COLOR_ALWAYS=y
 # end of CMake Utilities
 
 #
-# ESP-DL Configuration
-#
-
-#
-# Vision/Image: Pixel Convert Support
-#
-# default:
-CONFIG_PIX_CVT_RGB565_TO_RGB565_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB565_TO_RGB888_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB565_TO_GRAY_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB565_TO_HSV_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB888_TO_RGB888_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB888_TO_RGB565_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB888_TO_GRAY_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_RGB888_TO_HSV_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_GRAY_TO_GRAY_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_HSV_TO_HSV_MASK_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_YUV_TO_RGB888_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_YUV_TO_RGB565_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_YUV_TO_GRAY_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_YUV_TO_HSV_SUPPORT=y
-# default:
-CONFIG_PIX_CVT_YUV_TO_YUV_SUPPORT=y
-# end of Vision/Image: Pixel Convert Support
-# end of ESP-DL Configuration
-
-#
 # Espressif Camera Sensors Configurations
 #
 
@@ -5056,6 +5016,27 @@ CONFIG_HUMAN_FACE_DETECT_MODEL_LOCATION=0
 # end of models: human_face_detect
 
 #
+# models: human_face_feat
+#
+# default:
+CONFIG_FLASH_HUMAN_FACE_FEAT_MFN_S8_V1=y
+# default:
+# CONFIG_FLASH_HUMAN_FACE_FEAT_MBF_S8_V1 is not set
+# default:
+CONFIG_HUMAN_FACE_FEAT_MFN_S8_V1=y
+# default:
+CONFIG_DEFAULT_HUMAN_FACE_FEAT_MODEL=0
+# default:
+CONFIG_HUMAN_FACE_FEAT_MODEL_IN_FLASH_RODATA=y
+# default:
+# CONFIG_HUMAN_FACE_FEAT_MODEL_IN_FLASH_PARTITION is not set
+# default:
+# CONFIG_HUMAN_FACE_FEAT_MODEL_IN_SDCARD is not set
+# default:
+CONFIG_HUMAN_FACE_FEAT_MODEL_LOCATION=0
+# end of models: human_face_feat
+
+#
 # LED Indicator
 #
 # default:
@@ -5125,6 +5106,8 @@ CONFIG_USB_HOST_SUSPEND_ENTRY_MS=20
 
 # default:
 # CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK is not set
+# default:
+# CONFIG_USB_HOST_DWC_DMA_CAP_MEMORY_IN_PSRAM is not set
 # default:
 CONFIG_USB_OTG_SUPPORTED=y
 # end of USB-OTG
