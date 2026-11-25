@@ -261,23 +261,29 @@ static void v17_color(lv_obj_t *o, uint32_t c)
     lv_obj_set_style_bg_color(o, lv_color_hex(c), 0);
 }
 
+static lv_style_t lite_status_style;
+static bool lite_style_ready;
+static void lite_style_init(void)
+{
+    if (lite_style_ready) return;
+    lv_style_init(&lite_status_style);
+    lv_style_set_bg_color(&lite_status_style, lv_color_hex(0x202830));
+    lv_style_set_bg_opa(&lite_status_style, LV_OPA_COVER);
+    lv_style_set_text_color(&lite_status_style, lv_color_white());
+    lv_style_set_text_align(&lite_status_style, LV_TEXT_ALIGN_CENTER);
+    lv_style_set_pad_top(&lite_status_style, 12);
+    lite_style_ready = true;
+}
 static lv_obj_t *v17_make_flag(lv_obj_t *p, const char *txt, int y)
 {
-    lv_obj_t *o = lv_obj_create(p);
+    lite_style_init();
+    lv_obj_t *o = lv_label_create(p);
     lv_obj_remove_style_all(o);
+    lv_obj_add_style(o, &lite_status_style, 0);
+    lv_label_set_text(o, txt);
     lv_obj_set_pos(o, 18, y);
     lv_obj_set_size(o, 190, 46);
-    lv_obj_set_style_bg_color(o, lv_color_hex(0x202830), 0);
-    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(o, 1, 0);
-    lv_obj_set_style_border_color(o, lv_color_hex(0x506070), 0);
-    lv_obj_set_style_radius(o, 8, 0);
-    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *l = lv_label_create(o);
-    lv_label_set_text(l, txt);
-    lv_obj_set_style_text_color(l, lv_color_white(), 0);
-    lv_obj_center(l);
+    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     return o;
 }
 /* KORVO_P19_LABELS: labels de estado independientes de gateway_hmi_task.
@@ -285,20 +291,7 @@ static lv_obj_t *v17_make_flag(lv_obj_t *p, const char *txt, int y)
  * No se realizan solicitudes de red: solo lectura del snapshot Gateway2. */
 static lv_obj_t *p19_make_status_label(lv_obj_t *parent, const char *text, int y)
 {
-    lv_obj_t *o = lv_label_create(parent);
-    lv_label_set_text(o, text);
-    lv_obj_set_pos(o, 18, y);
-    lv_obj_set_size(o, 190, 46);
-    lv_obj_set_style_bg_color(o, lv_color_hex(0x202830), 0);
-    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(o, 1, 0);
-    lv_obj_set_style_border_color(o, lv_color_hex(0x506070), 0);
-    lv_obj_set_style_radius(o, 8, 0);
-    lv_obj_set_style_text_color(o, lv_color_white(), 0);
-    lv_obj_set_style_text_align(o, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_pad_top(o, 12, 0);
-    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
-    return o;
+    return v17_make_flag(parent, text, y);
 }
 
 /* KORVO_POSTBOOT_FIX01: estado de habilitacion separado de LVGL.
@@ -393,7 +386,7 @@ static void bt_local_set_error(const char *text)
 
 /* KORVO V22: controles fisicos de volumen y sliders retirados. */
 
-static void bt_open_cb(lv_event_t *e)
+static void __attribute__((unused)) bt_open_cb(lv_event_t *e)
 {
     (void)e;
     if (!s_bt_panel) return;
@@ -473,7 +466,7 @@ static void bt_device_cb(lv_event_t *e)
 }
 
 
-static void build_bluetooth_panel(lv_obj_t *screen)
+static void __attribute__((unused)) build_bluetooth_panel(lv_obj_t *screen)
 {
     s_bt_panel = lv_obj_create(screen);
     lv_obj_remove_style_all(s_bt_panel);
@@ -751,9 +744,23 @@ static void v21_21_wifi_health_cb(lv_timer_t *t)
 /* KORVO V22: callback de reproduccion SIP eliminado. */
 
 
+static unsigned lite_count(lv_obj_t *o)
+{
+    unsigned n = 1;
+    for (uint32_t i=0; i<lv_obj_get_child_count(o); ++i) n += lite_count(lv_obj_get_child(o,i));
+    return n;
+}
+static void lite_mem(const char *stage, lv_obj_t *screen)
+{
+    ESP_LOGI(TAG, "HMI_LITE01 %s objects=%u internal=%u largest=%u psram=%u", stage,
+        lite_count(screen), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));
+}
 void korvo_hmi_init(void)
 {
     lv_obj_t *screen = lv_scr_act();
+    lite_mem("BEFORE_INIT", screen);
 
     s_guide = lv_obj_create(screen);
     lv_obj_remove_style_all(s_guide);
@@ -816,8 +823,6 @@ void korvo_hmi_init(void)
     lv_obj_set_style_bg_opa(s_v17_location,LV_OPA_70,0); lv_obj_set_style_pad_all(s_v17_location,6,0);
     lv_obj_align(s_v17_location,LV_ALIGN_TOP_MID,0,6);
     lv_timer_create(v21_21_wifi_health_cb, 1000, NULL); /* V21.21 local WiFi health */
-    lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(s_v17_location,LV_OBJ_FLAG_CLICKABLE);
 s_v17_gateway=p19_make_status_label(screen,"GW WS: OFF",70);
     s_v17_sip=p19_make_status_label(screen,"SIP: NO | V: DOWN",120);
     lv_label_set_recolor(s_v17_sip, true);
@@ -826,20 +831,14 @@ s_v17_gateway=p19_make_status_label(screen,"GW WS: OFF",70);
     s_v17_sd=v17_make_flag(screen,"SD CARD",270);
     s_v17_bt=v17_make_flag(screen,"BLUETOOTH",320);
     lv_obj_add_flag(s_v17_bt, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_v17_bt,LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_v17_bt,bt_open_cb,LV_EVENT_CLICKED,NULL);
+    /* HMI_LITE01: passive display. */
     lv_timer_create(v17_pulse_cb,100,NULL);
     lv_timer_create(p19_gateway_sip_timer, 250, NULL); /* KORVO_P19_LABELS */
     /* V21.16 RESTORE MAIN HMI BUTTONS */
-    if (s_v17_gateway) lv_obj_add_flag(s_v17_gateway, LV_OBJ_FLAG_CLICKABLE);
     if (s_v17_sip) {
-        lv_obj_add_flag(s_v17_sip, LV_OBJ_FLAG_CLICKABLE);
     }
-    if (s_v17_reader)  lv_obj_add_flag(s_v17_reader, LV_OBJ_FLAG_CLICKABLE);
-    if (s_v17_door)    lv_obj_add_flag(s_v17_door, LV_OBJ_FLAG_CLICKABLE);
-    if (s_v17_sd)      lv_obj_add_flag(s_v17_sd, LV_OBJ_FLAG_CLICKABLE);
-    if (s_v17_bt)      lv_obj_add_flag(s_v17_bt, LV_OBJ_FLAG_CLICKABLE);
     s_motion_diag = NULL;
+    lite_mem("AFTER_INDICATORS", screen);
 
     /* KORVO_V17_8_VISUAL_HMI: SD card */
     s_storage_card = lv_obj_create(screen);
@@ -892,10 +891,8 @@ s_v21_23_sd_keys=lv_label_create(s_storage_card);
     s_gateway_footer = NULL;
 
     /* KORVO V22: pantalla sin controles de audio. */
-    build_bluetooth_panel(screen);
+    /* HMI_LITE01: Bluetooth panel not instantiated. */
     /* V21.9_1_LOCK_APPLIED */
-    korvo_lock_hmi_no_scroll();
-    /* V21.9_LOCK_APPLIED */
     korvo_lock_hmi_no_scroll();
 
     /* V1.3.19: visual screensaver removed. Camera/motion/watchdog chain remains untouched. */
@@ -903,6 +900,7 @@ s_v21_23_sd_keys=lv_label_create(s_storage_card);
     reset_face_track();
     s_face_state = KORVO_HMI_FACE_NONE;
 
+    lite_mem("AFTER_INIT", screen);
     ESP_LOGI(TAG, "Access HMI initialized");
 }
 
