@@ -21,9 +21,10 @@ static void log_resources(const char *stage)
 
 esp_err_t korvo_intercom_init(void)
 {
-    log_resources("before alarm");
-    esp_err_t alarm = korvo_alarm_init();
-    log_resources("after alarm");
+    log_resources("before audio bypass");
+    /* LITE02: Gateway2 owns audio; no local audio allocation. */
+    esp_err_t alarm = ESP_OK;
+    log_resources("after audio bypass");
     if (alarm != ESP_OK) ESP_LOGW(TAG, "Alarm audio init: %s", esp_err_to_name(alarm));
     ESP_LOGI(TAG, "P01: KORVO SIP and local Bluetooth OFF; Gateway2 owns communications");
     return alarm;

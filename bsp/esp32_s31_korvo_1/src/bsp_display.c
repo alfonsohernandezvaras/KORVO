@@ -86,7 +86,6 @@ static lv_display_t *disp;
 static lv_indev_t *disp_indev_touch = NULL;
 #endif // (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
 static bsp_lcd_handles_t disp_handles;
-static esp_lcd_touch_handle_t tp;   // LCD touch handle
 
 // Bit number used to represent command and parameter
 #define LCD_CMD_BITS           8
@@ -363,31 +362,6 @@ esp_err_t bsp_touch_new(const bsp_touch_config_t *config, esp_lcd_touch_handle_t
 }
 
 #if (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
-static lv_indev_t *bsp_display_indev_touch_init(lv_display_t *disp)
-{
-    BSP_ERROR_CHECK_RETURN_NULL(bsp_touch_new(NULL, &tp));
-    assert(tp);
-
-    /* Add touch input (for selected screen) */
-    const lvgl_port_touch_cfg_t touch_cfg = {
-        .disp = disp,
-        .handle = tp,
-    };
-
-    return lvgl_port_add_touch(&touch_cfg);
-}
-
-static esp_err_t bsp_touch_enter_sleep(void)
-{
-    assert(tp);
-    return esp_lcd_touch_enter_sleep(tp);
-}
-
-static esp_err_t bsp_touch_exit_sleep(void)
-{
-    assert(tp);
-    return esp_lcd_touch_exit_sleep(tp);
-}
 #endif // (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
 
 #if (BSP_CONFIG_NO_GRAPHIC_LIB == 0)
@@ -415,7 +389,8 @@ lv_display_t *bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
     assert(cfg != NULL);
     BSP_ERROR_CHECK_RETURN_NULL(lvgl_port_init(&cfg->lvgl_port_cfg));
     BSP_NULL_CHECK(disp = bsp_display_lcd_init(cfg), NULL);
-    BSP_NULL_CHECK(disp_indev_touch = bsp_display_indev_touch_init(disp), NULL);
+    disp_indev_touch = NULL;
+    ESP_LOGI(TAG, "KORVO_LITE04: TOUCH DISABLED");
 
     return disp;
 }
@@ -455,14 +430,12 @@ static esp_err_t bsp_lcd_exit_sleep(void)
 esp_err_t bsp_display_enter_sleep(void)
 {
     BSP_ERROR_CHECK_RETURN_ERR(bsp_lcd_enter_sleep());
-    BSP_ERROR_CHECK_RETURN_ERR(bsp_touch_enter_sleep());
     return ESP_OK;
 }
 
 esp_err_t bsp_display_exit_sleep(void)
 {
     BSP_ERROR_CHECK_RETURN_ERR(bsp_lcd_exit_sleep());
-    BSP_ERROR_CHECK_RETURN_ERR(bsp_touch_exit_sleep());
     return ESP_OK;
 }
 #endif // (BSP_CONFIG_NO_GRAPHIC_LIB == 0)

@@ -48,7 +48,6 @@
 #include "freertos/semphr.h"
 
 #define KORVO_V21_8_RADIO_QUIET 1
-#define KORVO_V21_8_USB_HID_MOUSE 0
 #define NUM_BUFS 2
 #define ALIGN_UP(num, align)    (((num) + ((align) - 1)) & ~((align) - 1))
 
@@ -759,6 +758,7 @@ static void face_detection_task(void *arg)
             ESP_LOGI(TAG, "FACE score=%.3f box=[%d,%d,%d,%d]",
                      result.score, result.x1, result.y1,
                      result.x2, result.y2);
+#if 0 /* IA_LITE01: suspend estimated-eye logging */
             /* IA03_EYE_ROI: diagnostico limitado a 1 Hz, sin tocar HMI. */
             static TickType_t ia03_last_log = 0;
             if ((now - ia03_last_log) >= pdMS_TO_TICKS(1000)) {
@@ -774,6 +774,8 @@ static void face_detection_task(void *arg)
                     ESP_LOGI("IA03_EYES", "ROI NO DISPONIBLES");
                 }
             }
+#endif
+
 
             /*
              * Any ESP-DL candidate may wake the LCD, but it starts the
@@ -1133,8 +1135,12 @@ static void camera_video_frame_operation(uint8_t *camera_buf, uint8_t camera_buf
      * ESP-DL runs in its own task, never inside this video callback.
      */
     /* IA04_OCULAR_DIAG: analizar antes de copiar frame para ESP-DL. */
+    /* IA_LITE01: ocular diagnostics suspended; shared face snapshot retained. */
+    (void)ia04_sample_eyes; (void)ia05_sample_temporal;
+#if 0
     ia04_sample_eyes(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
     ia05_sample_temporal(camera_buf, camera_buf_hes, camera_buf_ves, camera_buf_len);
+#endif
     /* IA07_BOOTSAFE01: postergar modulo experimental hasta 15 s de uptime.
        No bloquear ni modificar watchdog ni pipeline original. */
     if (esp_timer_get_time() >= 15000000LL) {
@@ -1390,7 +1396,6 @@ static void gateway_hmi_task(void *arg)
     (void)arg;
     /* Keep the large Bluetooth scan snapshot out of this 4 KB task stack. */
     static korvo_gateway_status_t gw;
-    static korvo_bluetooth_status_t bt;
     static korvo_network_status_t net;
     /* KORVO_P17_DIAG_SIP: confirmar entrada y ejecucion de tarea HMI. */
     ESP_LOGW("KORVO_P17", "gateway_hmi_task INICIADA");
@@ -1399,7 +1404,6 @@ static void gateway_hmi_task(void *arg)
         if ((p17_cycles++ % 20U) == 0U) {
             ESP_LOGW("KORVO_P17", "gateway_hmi_task VIVA ciclo=%lu", (unsigned long)p17_cycles);
         }
-        korvo_bluetooth_supervise();
         korvo_gateway_get_status(&gw);
 
         /* V21.27: comando/visibilidad no equivalen a READY. */
@@ -1433,9 +1437,7 @@ static void gateway_hmi_task(void *arg)
         /* KORVO_P08_HMI_DIRECTO: mismo booleano del WebServer. */
         korvo_hmi_update_gateway_sip(gw.websocket_connected,
                                      gw.sip_registered, gw.sip_state);
-        korvo_bluetooth_get_status(&bt);
         korvo_network_get_status(&net);
-        korvo_hmi_update_bluetooth(&bt);
         /* V25-P04 TAG HOST: usar Name/TAG persistido en NVS. */
         korvo_hmi_update_location(net.config.ip, gw.local.name);
         korvo_hmi_update_gateway_status(gw.local.hostname,
@@ -1444,10 +1446,7 @@ static void gateway_hmi_task(void *arg)
                                         gw.control_ok,
                                         gw.sip_registered,
                                         gw.sip_state,
-                                        bt.enabled,
-                                        bt.paired,
-                                        bt.slc_connected,
-                                        bt.peer_name[0] ? bt.peer_name : bt.peer_mac);
+                                        false, false, false, "");
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
@@ -1462,19 +1461,9 @@ void app_main(void)
     ESP_LOGI(TAG, "BOOT reset_reason=%d automatic_restart=DISABLED",
              (int)boot_reason);
 
-#if KORVO_V21_8_USB_HID_MOUSE
-    ESP_LOGW(TAG, "V21.8: starting USB Host HID support");
-    bsp_usb_host_start(BSP_USB_HOST_POWER_MODE_USB_DEV, true);
-#endif
-    lv_disp_t *korvo_display = bsp_display_start();
-#if KORVO_V21_8_USB_HID_MOUSE
-    const lvgl_port_hid_mouse_cfg_t korvo_mouse_cfg = {
-        .disp = korvo_display,
-        .sensitivity = 1,
-    };
-    lvgl_port_add_usb_hid_mouse_input(&korvo_mouse_cfg);
-    ESP_LOGW(TAG, "V21.8 USB HID mouse enabled; TOUCH remains enabled for this test");
-#endif
+
+    bsp_display_start();
+
 
     /*
      * ESP32-S31-Korvo-1 cold power-on stabilization.

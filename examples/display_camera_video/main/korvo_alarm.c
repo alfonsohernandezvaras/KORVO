@@ -98,7 +98,7 @@ esp_err_t korvo_alarm_init(void)
     s_status.playing = false;
     s_status.last_error[0] = '\0';
     unlock();
-    return korvo_audio_bridge_init();
+    return ESP_ERR_NOT_SUPPORTED;
 }
 
 esp_err_t korvo_alarm_set_selected(uint8_t type)
@@ -320,6 +320,8 @@ done:
 
 esp_err_t korvo_alarm_test(uint8_t type)
 {
+    /* LITE02: legacy playback disabled, API retained. */
+    return ESP_ERR_NOT_SUPPORTED;
     if (!valid_type(type)) return ESP_ERR_INVALID_ARG;
     esp_err_t e = korvo_alarm_set_selected(type);
     if (e != ESP_OK) return e;
