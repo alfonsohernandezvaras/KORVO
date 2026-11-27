@@ -41,31 +41,27 @@ static void ia11_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_t len)
     ia12_last_face_us = now;
     if (ia12_finalized) return;
     if (ia12_captured < 5) {
+        bool fresh = ia10_evidence_us && now - ia10_evidence_us <= 1200000LL;
+        if (!fresh || ia10_result != 1) {
+            ia11_result = fresh && ia10_result == 2 ? 2 : 3;
+            return;
+        }
         uint8_t before = ia12_captured;
         ia12_capture(buf, w, h, len, x1, y1, x2, y2);
         if (ia12_captured != before) {
-            /* IA07/IA08/IA10: cumulative vote, not simultaneous consensus. */
-            if (ia07_suspect) ia12_card_evidence += 2;
-            if (ia08_shape_vote < 0) ia12_card_evidence += 2;
-            if (ia08_shape_vote > 0) ia12_person_evidence += 2;
-            if (ia10_result == 1) ia12_person_evidence += 2;
-            if (ia10_result == 2) ia12_card_evidence++;
-            /* Detection itself is a weak positive, never sufficient to open a door. */
             ia12_person_evidence++;
             ia11_result = 3 + ia12_captured;
-            ESP_LOGI("IA12", "CAPTURE %u/5 IA07=%d IA08=%d IA10=%d PERSON=%u CARD=%u",
-                (unsigned)ia12_captured, (int)ia07_suspect, (int)ia08_shape_vote,
-                (int)ia10_result, (unsigned)ia12_person_evidence,
-                (unsigned)ia12_card_evidence);
+            ESP_LOGI("IA12", "CAPTURE %u/5 IA10=%d PERSON=%u (VALIDACION TEMPORAL EXPERIMENTAL)",
+                (unsigned)ia12_captured, (int)ia10_result, (unsigned)ia12_person_evidence);
         }
         return;
     }
     if (ia12_saved + ia12_failed < 5) return;
     /* Forced experimental decision. Tie goes to credential for conservative display. */
-    ia11_result = (ia12_person_evidence > ia12_card_evidence) ? 1 : 2;
+    ia11_result = (ia12_saved == 5 && ia12_failed == 0) ? 1 : 3;
     ia12_finalized = true;
     ESP_LOGW("IA12", "FINAL %s person=%u card=%u sd_saved=%u sd_failed=%u (EXPERIMENTAL, SIN ACCESO)",
-        ia11_result==1 ? "ROSTRO_HUMANO_DETECTADO" : "CREDENCIAL_DETECTADA",
+        ia11_result==1 ? "ROSTRO_HUMANO_DETECTADO" : "CAPTURA_INCOMPLETA",
         (unsigned)ia12_person_evidence, (unsigned)ia12_card_evidence,
         (unsigned)ia12_saved, (unsigned)ia12_failed);
     ia11_last_log_us = now;

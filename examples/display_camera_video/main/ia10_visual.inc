@@ -6,6 +6,8 @@
 static uint8_t ia10_prev[12 * 12];
 static bool ia10_prev_ok = false;
 static int ia10_prev_cx = 0, ia10_prev_cy = 0;
+static int ia10_prev_w = 0, ia10_prev_h = 0;
+static int64_t ia10_evidence_us = 0;
 static uint32_t ia10_frame_count = 0;
 static int64_t ia10_last_us = 0;
 static uint8_t ia10_person_hits = 0, ia10_photo_hits = 0;
@@ -27,6 +29,7 @@ static void ia10_visual_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_
     if (!esp_dl_enabled || !f.detected || !tick ||
         (xTaskGetTickCount() - tick) > pdMS_TO_TICKS(900)) {
         ia10_prev_ok = false;
+        ia10_evidence_us = 0;
         ia10_person_hits = ia10_photo_hits = 0;
         ia10_result = 0;
         return;
@@ -36,7 +39,7 @@ static void ia10_visual_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_
     if (y1 < 0) y1 = 0;
     if (x2 > (int)w) x2 = (int)w;
     if (y2 > (int)h) y2 = (int)h;
-    if (x2 - x1 < 32 || y2 - y1 < 32) { ia10_result = 3; return; }
+    if (x2 - x1 < 32 || y2 - y1 < 32) { ia10_prev_ok = false; ia10_person_hits = ia10_photo_hits = 0; ia10_evidence_us = 0; ia10_result = 3; return; }
     const uint16_t *p = (const uint16_t *)buf;
     uint8_t current[144];
     uint32_t chroma = 0, brightness = 0, temporal = 0;
@@ -62,30 +65,32 @@ static void ia10_visual_sample(const uint8_t *buf, uint32_t w, uint32_t h, size_
         }
     }
     int cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
-    bool aligned = ia10_prev_ok && abs(cx - ia10_prev_cx) < 10 &&
+    bool had_prev = ia10_prev_ok && ia10_evidence_us && us - ia10_evidence_us <= 1200000LL;
+    bool aligned = had_prev && abs(cx - ia10_prev_cx) < 10 &&
                    abs(cy - ia10_prev_cy) < 10;
+    bool size_ok = had_prev && abs((x2-x1)-ia10_prev_w) < 20 && abs((y2-y1)-ia10_prev_h) < 24;
+    ia10_prev_w = x2-x1; ia10_prev_h = y2-y1;
+    ia10_evidence_us = us;
     memcpy(ia10_prev, current, sizeof(current));
     ia10_prev_ok = true;
     ia10_prev_cx = cx; ia10_prev_cy = cy;
     unsigned c = chroma / 144U, l = brightness / 144U;
     unsigned d = temporal / 144U;
-    /* La cromaticidad solo es fiable con iluminacion razonable. El movimiento
-       aislado NO se considera prueba de vida (autoexposicion/ruido). */
+    /* Experimental: color is diagnostic only. Require repeated temporal evidence. */
     bool good_light = l >= 45U && l <= 230U;
-    bool color_face = good_light && c >= 20U;
-    bool gray_face = good_light && c <= 9U;
-    bool static_roi = aligned && d <= 5U && temporal_hits <= 8U;
-    if (color_face) {
+    bool active = had_prev && good_light && size_ok && d >= 12U && temporal_hits >= 30U;
+    bool still = had_prev && good_light && aligned && size_ok && d <= 5U && temporal_hits <= 8U;
+    if (active) {
         if (ia10_person_hits < 12) ia10_person_hits++;
         ia10_photo_hits = 0;
-    } else if (gray_face && static_roi) {
-        if (ia10_photo_hits < 12) ia10_photo_hits++;
+    } else if (still) {
         ia10_person_hits = 0;
+        if (ia10_photo_hits < 12) ia10_photo_hits++;
     } else {
-        if (ia10_person_hits) ia10_person_hits--;
-        if (ia10_photo_hits) ia10_photo_hits--;
+        ia10_person_hits = 0;
+        ia10_photo_hits = 0;
     }
-    int state = ia10_person_hits >= 5 ? 1 : ia10_photo_hits >= 7 ? 2 : 3;
+    int state = ia10_person_hits >= 3 ? 1 : ia10_photo_hits >= 3 ? 2 : 3;
     ia10_result = state;
     static int64_t last_log = 0;
     if (state != ia10_last_log_state || us - last_log >= 1000000LL) {
